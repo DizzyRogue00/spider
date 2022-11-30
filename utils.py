@@ -381,6 +381,13 @@ def get(url, params=None, cookies=None, headers=None, data_type: str = "form", *
 
 # 二进制解析
 def read_varint(stream: bytes):
+    """
+    读取 varint。
+    Args:
+        stream (bytes): 字节流。
+    Returns:
+        tuple[int, int]，真实值和占用长度。
+    """
     value = 0
     position = 0
     shift = 0

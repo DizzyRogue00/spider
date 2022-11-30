@@ -190,12 +190,12 @@ class Get_Danmaku(object):
         return len(self.output)
 
 
-def Main(BVID):
+def Main(BVID,verify):
     start_time = datetime.datetime.now()
     #BVID = "BV1KK4y1N7xT"
     #BVID = "BV16A411G7Sd"
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
-    verify = Verify("f6d5fe36%2C1644567166%2Ce3f14%2A81", "fbfd8b641c81de76f13b6232039833ec")
+    #verify = Verify("f6d5fe36%2C1644567166%2Ce3f14%2A81", "fbfd8b641c81de76f13b6232039833ec")
     instance = Get_Danmaku(BVID, verify)
     info = instance.get_info()
     print(info)
@@ -211,11 +211,11 @@ if __name__ == '__main__':
     #BVID = "BV1jK4y1D7Ft"
     #BVID="BV1ob411p7oc"#这个视频分p
     #BVID = "BV1KK4y1N7xT"
-    BVID = "BV16A411G7Sd"
+    BVID = "BV1wm4y1D7vr"
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
-    verify = Verify("f6d5fe36%2C1644567166%2Ce3f14%2A81", "fbfd8b641c81de76f13b6232039833ec")
+    verify = Verify("40044cf5%2C1685345406%2Cb0d54%2Ab2", "bdfbb7688ef4ea05481243991516d833")
     #爬取弹幕
-    Main(BVID)
+    Main(BVID,verify)
 
     '''
     #原始的爬取评论，速度慢
@@ -223,8 +223,9 @@ if __name__ == '__main__':
     '''
 
     #利用多线程爬取展示评论
-    comments.getOriginalComments(BVID=BVID, verify=verify)
-
+    #comments.getOriginalComments(BVID=BVID, verify=verify)
+    '''
+    #两个版本，全部的评论，休眠600s
     time.sleep(600)
 
     #time.sleep(600)
@@ -236,6 +237,7 @@ if __name__ == '__main__':
 
     #利用线程爬取总评论版本2
     comments.getTotalComments_ver2(BVID=BVID, verify=verify)
+    '''
 
 
 

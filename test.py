@@ -1,5 +1,5 @@
 '''
-pip install bilibili-api
+#pip install bilibili-api
 # 导入模块
 from bilibili_api import video
 # 参数
@@ -196,13 +196,15 @@ def Main(BVID,verify):
     #BVID = "BV16A411G7Sd"
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
     #verify = Verify("f6d5fe36%2C1644567166%2Ce3f14%2A81", "fbfd8b641c81de76f13b6232039833ec")
-    instance = Get_Danmaku(BVID, verify)
+    #instance = Get_Danmaku(BVID, verify)
+    instance = video.Get_Danmaku_history(BVID, verify)
     info = instance.get_info()
     print(info)
     # print(instance.get_index())
     # print(instance.get_latest_danmaku(info["pages"][0]["cid"]))
     # print(instance.get_history_danmaku(info["pages"][0]["cid"],'2021-05-09'))
-    instance.get_total_danmaku()
+    #instance.get_total_danmaku()
+    instance.get_danmaku_overview()
     delta = (datetime.datetime.now() - start_time).total_seconds()
     print(f'用时：{delta}s')
 

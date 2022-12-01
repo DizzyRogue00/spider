@@ -305,7 +305,8 @@ class Danmaku(object):
         # ret = "%s,%s,%s,%s" % (self.send_time, self.dm_time, self.crc32_id, self.text)
         # ret = "%s,%s,%s,%d,%s" % (self.send_time, self.dm_time, self.crc32_id, self.uid,self.text)
         # ret = "{0},{1},{2},{3},{4}".format(self.send_time, self.dm_time, self.crc32_id, self.uid, self.text)
-        ret = "{0},{1},{2},{3}".format(self.send_time, self.dm_time, self.crc32_id, self.text)
+        #ret = "{0},{1},{2},{3}".format(self.send_time, self.dm_time, self.crc32_id, self.text)
+        ret = "{0},{1}".format(self.send_time, self.text)
         return ret
 
     def __len__(self):

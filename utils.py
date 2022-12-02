@@ -9,6 +9,8 @@ import requests
 import urllib3
 
 import exceptions
+from typing import List,TypeVar
+from enum import Enum
 
 request_settings = {
     "use_https": True,
@@ -166,6 +168,7 @@ class CrackUid(object):
         return [1, str_]
 
     def __call__(self, input_):
+        self.__create_table()
         ht = int(input_, 16) ^ 0xFFFFFFFF
         i = 3
         while i >= 0:
@@ -259,46 +262,74 @@ class Color(object):
 
 _crack_uid = None
 
+class FontSize(Enum):
+    EXTREME_SMALL = 12
+    SUPER_SMALL = 16
+    SMALL = 18
+    NORMAL = 25
+    BIG = 36
+    SUPER_BIG = 45
+    EXTREME_BIG = 64
+
+class Mode(Enum):
+    FLY = 1
+    TOP = 5
+    BOTTOM = 4
+    REVERSE = 6
 
 class Danmaku(object):
-    FONT_SIZE_EXTREME_SMALL = 12
-    FONT_SIZE_SUPER_SMALL = 16
-    FONT_SIZE_SMALL = 18
-    FONT_SIZE_NORMAL = 25
-    FONT_SIZE_BIG = 36
-    FONT_SIZE_SUPER_BIG = 45
-    FONT_SIZE_EXTREME_BIG = 64
-    MODE_FLY = 1
-    MODE_TOP = 5
-    MODE_BOTTOM = 4
-    MODE_REVERSE = 6
     TYPE_NORMAL = 0
     TYPE_SUBTITLE = 1
 
-    def __init__(self, text: str, dm_time: float = 0.0, send_time: float = time.time(), crc32_id: str = None,
-                 id_: int = -1, id_str: str = '',
-                 mode: int = MODE_FLY, font_size: int = FONT_SIZE_NORMAL, color: Color = None,
-                 weight: int = -1, action: str = '', pool: int = -1, attr: int = -1,
-                 is_sub: bool = False):
+    def __init__(self,
+                 text: str,
+                 dm_time: float = 0.0,
+                 send_time: float = time.time(),
+                 crc32_id: str = None,
+                 color: str='ffffff',
+                 weight: int = -1,
+                 id_: int = -1,
+                 id_str: str = '',
+                 action: str = '',
+                 mode: Mode= Mode.FLY,
+                 font_size: FontSize = FontSize.NORMAL,
+                 is_sub:bool=False,
+                 pool: int = -1,
+                 attr: int = -1):
+
+                 # Args:
+                 #     text      (str)               : 弹幕文本。
+                 #     dm_time   (float, optional)   : 弹幕在视频中的位置，单位为秒。Defaults to 0.0.
+                 #     send_time (float, optional)   : 弹幕发送的时间。Defaults to time.time().
+                 #     crc32_id  (str, optional)     : 弹幕发送者 UID 经 CRC32 算法取摘要后的值。Defaults to None.
+                 #     color     (str, optional)     : 弹幕十六进制颜色。Defaults to "ffffff".
+                 #     weight    (int, optional)     : 弹幕在弹幕列表显示的权重。Defaults to -1.
+                 #     id_       (int, optional)     : 弹幕 ID。Defaults to -1.
+                 #     id_str    (str, optional)     : 弹幕字符串 ID。Defaults to "".
+                 #     action    (str, optional)     : 暂不清楚。Defaults to "".
+                 #     mode      (Mode, optional)    : 弹幕模式。Defaults to Mode.FLY.
+                 #     font_size (FontSize, optional): 弹幕字体大小。Defaults to FontSize.NORMAL.
+                 #     is_sub    (bool, optional)    : 是否为字幕弹幕。Defaults to False.
+                 #     pool      (int, optional)     : 暂不清楚。Defaults to -1.
+                 #     attr      (int, optional)     : 暂不清楚。 Defaults to -1.
+
+        self.text = text
         self.dm_time = datetime.timedelta(seconds=dm_time)
         self.send_time = datetime.datetime.fromtimestamp(send_time)
         self.crc32_id = crc32_id
-        # self.uid1=None
-        # self.uid2=None
-        self.uid = None
+        self.color = color
+        self.weight = weight
         self.id = id_
         self.id_str = id_str
-        self.text = text
-
-        self.color = color if color else Color()
+        self.action = action
         self.mode = mode
         self.font_size = font_size
         self.is_sub = is_sub
-
-        self.weight = weight
-        self.action = action
         self.pool = pool
         self.attr = attr
+        # self.uid1=None
+        # self.uid2=None
+        self.uid = None
 
     def __str__(self):
         # ret="%s,%s,%s,%d,%s,%s"%(self.send_time,self.dm_time,self.crc32_id,self.uid1,self.uid2,self.text)
@@ -402,3 +433,30 @@ def read_varint(stream: bytes):
         position += 1
         shift += 7
     return value, position + 1
+
+def join(seperator:str,array:list):
+    """
+    用指定字符连接数组
+    Args:
+        seperator (str) : 分隔字符
+        array     (list): 数组
+    Returns:
+        str: 连接结果
+    """
+    return seperator.join(map(lambda x:str(),array))
+
+ChunkT=TypeVar('ChunkT',List,List)
+def chunk(arr:ChunkT,size:int) -> List[ChunkT]:
+    if size<=0:
+        raise Exception('Parameter "size" must greater than 0')
+
+    result=[]
+    temp=[]
+    for i in range(len(arr)):
+        temp.append(arr[i])
+        if i % size == size-1:
+            result.append(temp)
+            temp=[]
+    if temp:
+        result.append(temp)
+    return result

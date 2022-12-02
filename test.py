@@ -197,7 +197,7 @@ def Main(BVID,verify):
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
     #verify = Verify("f6d5fe36%2C1644567166%2Ce3f14%2A81", "fbfd8b641c81de76f13b6232039833ec")
     #instance = Get_Danmaku(BVID, verify)
-    instance = video.Get_Danmaku_history(BVID, verify)
+    instance = video.Get_Danmaku_heuristic(BVID, verify)
     info = instance.get_info()
     print(info)
     # print(instance.get_index())

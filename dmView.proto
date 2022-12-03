@@ -1,0 +1,98 @@
+syntax="proto3";
+
+package dmView;
+
+message DmWebViewReply{
+	int32 state=1;
+	string text=2;
+	string textSide=3;
+	DmSegConfig dmSge=4;
+	DanmakuFlagConfig flag=5;
+	repeated string specialDms=6;
+	bool checkBox=7;
+	int64 count=8;
+	repeated CommandDm commandDms=9;
+	DanmuWebPlayerConfig dmSetting=10;
+	//repeated string reportFilter=11;
+	//repeated Expressions expressions=12;
+	//repeated PostPanel postPanel=13;
+	//repeated string activityMetas=14;
+}
+
+message DmSegConfig{
+	int64 pageSize=1;
+	int64 total=2;
+}
+
+message DanmakuFlagConfig{
+	int32 recFlag=1;
+	string recText=2;
+	int32 recWeitch=3;
+}
+
+message CommandDm{
+	int64 id=1;
+	int64 oid=2;
+	int64 mid=3;
+	string command=4;
+	string content=5;
+	int32 progress=6;
+	string ctime=7;
+	string mtime=8;
+	string extra=9;
+	string idStr=10;
+}
+
+message DanmuWebPlayerConfig{
+	bool dmSwitch=1;
+	bool aiSwitch=2;
+	int32 alLevel=3;
+	bool blocktop=4;
+	bool blockscroll=5;
+	bool blockbottom=6;
+	bool blockcolor=7;
+	bool blockspecial=8;
+	bool preventshade=9;
+	bool dmask=10;
+	float opacity=11;
+	int32 dmarea=12;
+	float speedplus=13;
+	float fontsize=14;
+	bool screensync=15;
+	bool speedsync=16;
+	string fontfamily=17;
+	bool bold=18;
+	int32 fontborder=19;
+	string drawType=20;
+	int32 seniorModeSwitch=21;
+}
+//message Expressions{
+//
+//}
+
+//message PostPanel{
+//	int64 start=1;
+//	int64 end=2;
+//	int64 priority=3;
+//	int64 bizId=4;
+//	PostPanelBizType bizType=5;
+//	ClickButton clickButton=6;
+//	TextInput textInput=7;
+//	CheckBox checkBox=8;
+//}
+
+//message PostPanelBizType{
+//
+//}
+
+//message ClickButton{
+//
+//}
+
+//message TextInput{
+//
+//}
+//
+//message CheckBox{
+//
+//}

@@ -36,6 +36,7 @@ import pandas as pd
 import comments
 import video
 from utils import Verify
+import json
 
 # url_simple="https://api.bilibili.com/x/web-interface/archive/stat"
 # url_detail="https://api.bilibili.com/x/web-interface/view"
@@ -154,16 +155,43 @@ def Main(BVID,verify):
     delta = (datetime.datetime.now() - start_time).total_seconds()
     print(f'用时：{delta}s')
 
+def forward(clip, verify:Verify):
+    #爬取弹幕
+    Main(clip, verify)
+    time.sleep(60)
+    # 利用线程爬取总评论版本2
+    comments.getTotalComments_ver2(BVID=clip, verify=verify)
+    time.sleep(60)
+    return "OK"
+
 
 if __name__ == '__main__':
+    clips=[
+        "BV1Jo4y127ob",
+        "BV18W4y1b7py",
+        "BV1w64y127Ui",
+        "BV1FL4y1L7zM",
+        "BV1TB4y1u785",
+        "BV1zr4y1a7Sc",
+        "BV1bK4y1K7yv",
+        "BV1TP4y1x7Pp",
+        "BV1Xf4y1j7Ps",
+        "BV1So4y1f7gD",
+        "BV1Av411j77t",
+        "BV1Dh41187Hy"
+    ]
+    with open("Verify.json","r") as load_f:
+        load_dict=json.load(load_f)
+    verify =Verify(load_dict["SESSDATA"],load_dict["bili_jct"])
+    
     #BVID = "BV1jK4y1D7Ft"
     #BVID="BV1ob411p7oc"#这个视频分p
     #BVID = "BV1KK4y1N7xT"
-    BVID = "BV1wm4y1D7vr"
+    #BVID = "BV1wm4y1D7vr"
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
-    verify = Verify("eb20d1fa%2C1685607731%2C6a5be%2Ac1", "16bd458fe5352259a6ba70977d18c692")
+    #verify = Verify("7eb47605%2C1685952518%2C77f70%2Ac1", "bb3ca0710ce90f335b62a9505fe8ccff")
     #爬取弹幕
-    Main(BVID,verify)
+    #Main(BVID,verify)
 
     '''
     #原始的爬取评论，速度慢

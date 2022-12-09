@@ -963,19 +963,29 @@ def get_danmaku_g(bvid: str = None, aid: int = None, page_id: int = 0, verify: u
                     m,s=divmod(s,60)
                     h,m=divmod(m,60)
                     return ("%02d:%02d:%02d"%(h,m,s))
-                for iter in json_data['elems']:
-                    dm=utils.Danmaku("")
-                    dm.id=int(iter['id'])
-                    dm.dm_time=microSecondsTo(iter['progress'])
-                    dm.mode=utils.Mode(iter['mode']).name
-                    dm.font_size=utils.FontSize(iter['fontsize']).value
-                    dm.color=iter['color']
-                    dm.crc32_id=iter['midHash']
-                    dm.text=iter['content']
-                    dm.send_time=datetime.datetime.fromtimestamp(float(iter['ctime']))
-                    #dm.weight=iter['weight']
-                    dm.id_str=iter['idStr']
-                    yield dm
+                if json_data:
+                    for iter in json_data['elems']:
+                        dm=utils.Danmaku("")
+                        if 'id' in iter.keys():
+                            dm.id=int(iter['id'])
+                        if 'progress' in iter.keys():
+                            dm.dm_time=microSecondsTo(iter['progress'])
+                        if 'mode' in iter.keys():
+                            dm.mode=utils.Mode(iter['mode']).name
+                        if 'fontsize' in iter.keys():
+                            dm.font_size=utils.FontSize(iter['fontsize']).value
+                        if 'color' in iter.keys():
+                            dm.color=iter['color']
+                        if 'midHash' in iter.keys():
+                            dm.crc32_id=iter['midHash']
+                        if 'content' in iter.keys():
+                            dm.text=iter['content']
+                        if 'ctime' in iter.keys():
+                            dm.send_time=datetime.datetime.fromtimestamp(float(iter['ctime']))
+                        #dm.weight=iter['weight']
+                        if 'idStr' in iter.keys():
+                            dm.id_str=iter['idStr']
+                        yield dm
         else:
             raise exceptions.NetworkException(req.status_code)
 

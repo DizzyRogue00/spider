@@ -167,11 +167,11 @@ def forward(clip, verify:Verify):
 
 if __name__ == '__main__':
     clips=[
-        "BV1Jo4y127ob",
-        "BV18W4y1b7py",
-        "BV1w64y127Ui",
-        "BV1FL4y1L7zM",
-        "BV1TB4y1u785",
+        "BV1Jo4y127ob",#OK
+        "BV18W4y1b7py",#OK
+        "BV1w64y127Ui",#OK
+        "BV1FL4y1L7zM",#OK
+        "BV1TB4y1u785",#OK
         "BV1zr4y1a7Sc",
         "BV1bK4y1K7yv",
         "BV1TP4y1x7Pp",
@@ -183,11 +183,13 @@ if __name__ == '__main__':
     with open("Verify.json","r") as load_f:
         load_dict=json.load(load_f)
     verify =Verify(load_dict["SESSDATA"],load_dict["bili_jct"])
-    
+    [forward(clip, verify) for clip in clips]
+
     #BVID = "BV1jK4y1D7Ft"
     #BVID="BV1ob411p7oc"#这个视频分p
     #BVID = "BV1KK4y1N7xT"
     #BVID = "BV1wm4y1D7vr"
+    #BVID="BV1FL4y1L7zM"
     #verify = Verify("fdfe071a%2C1633418816%2C94f66%2A41", "c8da65a998aabc369b3e29a19277b868")
     #verify = Verify("7eb47605%2C1685952518%2C77f70%2Ac1", "bb3ca0710ce90f335b62a9505fe8ccff")
     #爬取弹幕

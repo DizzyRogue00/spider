@@ -76,4 +76,60 @@ def build_dataset(config,use_word):
                     contents.append((words,seq_len))
         return contents #[([...],0,32),([...],1,32)]
 
-    train=load_dataset()
+    train=load_dataset(config.train_path,config.pad_size)
+    valid=load_dataset(config.dev_path,config.pad_size)
+    test=load_dataset(config.test_path,config.pad_size)
+    return vocab_dict, train, valid, test
+
+class DataIterater(object):
+    def __init__(self,batches,batch_size,device):
+        self.batch_size=batch_size
+        self.batches=batches
+        self.n_batches=len(batches)//batch_size
+        self.residue=False
+        if len(batches)%self.n_batches !=0:
+            self.residue=True
+        self.index=0
+        self.device=device
+
+    def _to_tensor(self,data):
+        x=torch.LongTensor([item[0] for item in data]).to(self.device)
+        if len(data[0])==3:
+            y=torch.LongTensor([item[1] for item in data]).to(self.device)
+            seq_len=torch.LongTensor([item[2] for item in data]).to(self.device)
+            return (x,seq_len),y
+        else:
+            seq_len = torch.LongTensor([item[2] for item in data]).to(self.device)
+            return (x,seq_len)
+
+    def __next__(self):
+        if self.residue and self.index==self.n_batches:
+            batches=self.batches[self.index*self.batch_size:len(self.batches)]
+            self.index+=1
+            batches=self._to_tensor(batches)
+            return batches
+        elif self.index>=self.n_batches:
+            self.index=0
+            raise StopIteration
+        else:
+            batches = self.batches[self.index * self.batch_size:(self.index+1)*self.batch_size]
+            self.index+=1
+            batches=self._to_tensor(batches)
+            return batches
+
+    def __iter__(self):
+        return self
+
+    def __len__(self):
+        if self.residue:
+            return self.n_batches+1
+        else:
+            return self.n_batches
+
+def build_iter(dataset,config):
+    return DataIterater(dataset,config.batch_size,config.device)
+
+def get_time_diff(start_time):
+    end_time=time.time()
+    time_diff=end_time-start_time
+    return timedelta(seconds=round(time_diff))

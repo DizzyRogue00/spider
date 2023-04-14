@@ -3,7 +3,7 @@ import sys
 import torch
 import numpy as np
 import pickle as pkl
-import tqdm as tqdm
+from tqdm import tqdm
 import time
 from datetime import timedelta
 
@@ -19,15 +19,17 @@ def build_vocab(file_path, tokenizer,max_size,min_freq): # construct the vocabua
     :return:
     """
     vocab_dic={}
+    with open(file_path,'r',encoding="UTF-8") as f:
+        num_line=sum(1 for line in f)
     with open(file_path,'r',encoding="utf-8") as f:
-        for line in tqdm(f):
+        for line in tqdm(f,total=num_line):
             lin=line.strip()#remove leading and trailing characters (spaces)
             if not lin:
                 continue
             content=lin.split('\t')[0]
             for word in tokenizer(content):
                 vocab_dic[word]=vocab_dic.get(word,0)+1 #word frequency
-        vocab_list=sorted([item for item in vocab_dic.items() if item(1)>=min_freq], key=lambda x:x[1],reverse=True)[:max_size]
+        vocab_list=sorted([item for item in vocab_dic.items() if item[1]>=min_freq], key=lambda x:x[1],reverse=True)[:max_size]
         vocab_dic={word_count[0]:idx for idx, word_count in enumerate(vocab_list)}
         vocab_dic.update({UNK:len(vocab_dic),PAD:len(vocab_dic)+1})
     return vocab_dic
@@ -133,3 +135,33 @@ def get_time_diff(start_time):
     end_time=time.time()
     time_diff=end_time-start_time
     return timedelta(seconds=round(time_diff))
+
+if __name__ == "__main__":
+    '''提取预训练词向量'''
+    train_dir ="./data/Bulletin-screen train 200.txt"
+    vocab_dir ="./data/vocab.pkl"
+    pretrain_dir = "./data/sgns.sogou.char"
+    emb_dim = 300
+    filename_trimmed_dir = "./data/embedding_SougouNews"
+    if os.path.exists(vocab_dir):
+        with open(vocab_dir,'rb') as f:
+            word_to_id=pkl.load(f)
+    else:
+        # tokenizer = lambda x: x.split(' ')  # 以词为单位构建词表(数据集中词之间以空格隔开)
+        tokenizer = lambda x: [y for y in x]  # 以字为单位构建词表
+        word_to_id = build_vocab(train_dir, tokenizer=tokenizer, max_size=MAX_VOCAB_SIZE, min_freq=1)
+        with open(vocab_dir,'wb') as f:
+            pkl.dump(word_to_id, f)
+
+    embeddings = np.random.rand(len(word_to_id), emb_dim)
+    f = open(pretrain_dir, "r", encoding='UTF-8')
+    for i, line in enumerate(f.readlines()):
+        # if i == 0:  # 若第一行是标题，则跳过
+        #     continue
+        lin = line.strip().split(" ")
+        if lin[0] in word_to_id:
+            idx = word_to_id[lin[0]]
+            emb = [float(x) for x in lin[1:301]]
+            embeddings[idx] = np.asarray(emb, dtype='float32')
+    f.close()
+    np.savez_compressed(filename_trimmed_dir, embeddings=embeddings)

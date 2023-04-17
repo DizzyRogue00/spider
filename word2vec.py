@@ -136,25 +136,26 @@ def get_time_diff(start_time):
     time_diff=end_time-start_time
     return timedelta(seconds=round(time_diff))
 
-if __name__ == "__main__":
-    '''提取预训练词向量'''
-    train_dir ="./data/Bulletin-screen train 200.txt"
-    vocab_dir ="./data/vocab.pkl"
-    pretrain_dir = "./data/sgns.sogou.char"
-    emb_dim = 300
-    filename_trimmed_dir = "./data/embedding_SougouNews"
-    if os.path.exists(vocab_dir):
-        with open(vocab_dir,'rb') as f:
-            word_to_id=pkl.load(f)
-    else:
-        # tokenizer = lambda x: x.split(' ')  # 以词为单位构建词表(数据集中词之间以空格隔开)
-        tokenizer = lambda x: [y for y in x]  # 以字为单位构建词表
-        word_to_id = build_vocab(train_dir, tokenizer=tokenizer, max_size=MAX_VOCAB_SIZE, min_freq=1)
-        with open(vocab_dir,'wb') as f:
-            pkl.dump(word_to_id, f)
 
-    embeddings = np.random.rand(len(word_to_id), emb_dim)
-    f = open(pretrain_dir, "r", encoding='UTF-8')
+'''提取预训练词向量'''
+#train_dir ="./data/Bulletin-screen train 200.txt"
+train_dir="./data/vocabulary.txt"
+vocab_dir ="./data/vocab.pkl"
+pretrain_dir = "./data/sgns.sogou.char"
+emb_dim = 300
+filename_trimmed_dir = "./data/embedding"
+if os.path.exists(vocab_dir):
+    with open(vocab_dir,'rb') as f:
+        word_to_id=pkl.load(f)
+else:
+    # tokenizer = lambda x: x.split(' ')  # 以词为单位构建词表(数据集中词之间以空格隔开)
+    tokenizer = lambda x: [y for y in x]  # 以字为单位构建词表
+    word_to_id = build_vocab(train_dir, tokenizer=tokenizer, max_size=MAX_VOCAB_SIZE, min_freq=1)
+    with open(vocab_dir,'wb') as f:
+        pkl.dump(word_to_id, f)
+
+embeddings = np.random.rand(len(word_to_id), emb_dim)
+with open(pretrain_dir,"r",encoding='UTF-8') as f:
     for i, line in enumerate(f.readlines()):
         # if i == 0:  # 若第一行是标题，则跳过
         #     continue
@@ -163,5 +164,4 @@ if __name__ == "__main__":
             idx = word_to_id[lin[0]]
             emb = [float(x) for x in lin[1:301]]
             embeddings[idx] = np.asarray(emb, dtype='float32')
-    f.close()
-    np.savez_compressed(filename_trimmed_dir, embeddings=embeddings)
+np.savez_compressed(filename_trimmed_dir, embeddings=embeddings)

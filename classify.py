@@ -47,6 +47,10 @@ class config(object):
         self.filter_sizes = (2, 3, 4)                                   # 卷积核尺寸
         self.num_filters = 256                                          # 卷积核数量(channels数)
 
+        #LSTM
+        self.hidden_size=128    #lstm隐藏层
+        self.num_layers=2 #lstm 层数
+
 class TextCNN_trail(nn.Module):
     def __init__(self,config):
         super(TextCNN,self).__init__()
@@ -74,7 +78,22 @@ class TextCNN_trail(nn.Module):
         out=self.classify(out)
         return out
 
+class TextRNN(nn.Module):
+    def __init__(self,config):
+        super(TextRNN,self).__init()
+        if config.embedding_pretrained is not None:
+            self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
+        else:
+            self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+        self.lstm=nn.LSTM(config.embed,config.hidden_size,config.num_layers,
+                          batch_first=True,dropout=config.dropout,bidirectional=True)
+        self.classify=nn.Linear(config.hidden_size*2,config.num_classes)
 
+    def forward(self,x):
+        out=self.embedding(x[0]) #[batch_size,seq_len,embedding]
+        out,_=self.lstm(out)
+        out=self.classify(out[:,-1,:])
+        return out
 
 class GlobalMaxPool1d(nn.Module):
     def __init__(self):

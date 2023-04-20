@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import copy
 
 class config(object):
     #
@@ -50,10 +51,19 @@ class config(object):
         #LSTM
         self.hidden_size=128    #lstm隐藏层
         self.num_layers=2 #lstm 层数
+        #LSTM+attention
+        self.hidden_size2=64
+
+        #transformer
+        self.dim_model=300
+        self.hidden=1024
+        self.last_hidden=512
+        self.num_head=5
+        self.num_encoder=2
 
 class TextCNN_trail(nn.Module):
     def __init__(self,config):
-        super(TextCNN,self).__init__()
+        super(TextCNN_trail,self).__init__()
         if config.embedding_pretrained is not None:
             self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
         else:
@@ -80,7 +90,7 @@ class TextCNN_trail(nn.Module):
 
 class TextRNN(nn.Module):
     def __init__(self,config):
-        super(TextRNN,self).__init()
+        super(TextRNN,self).__init__()
         if config.embedding_pretrained is not None:
             self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
         else:
@@ -93,6 +103,159 @@ class TextRNN(nn.Module):
         out=self.embedding(x[0]) #[batch_size,seq_len,embedding]
         out,_=self.lstm(out)
         out=self.classify(out[:,-1,:])
+        return out
+
+class TextRNN_Attention(nn.Module):
+    def __init__(self,config):
+        super(TextRNN_Attention,self).__init__()
+        if config.embedding_pretrained is not None:
+            self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
+        else:
+            self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+        self.lstm=nn.LSTM(config.embed,config.hidden_size,config.num_layers,
+                          batch_first=True,dropout=config.dropout,bidirectional=True)
+        self.tanh1=nn.Tanh()
+        self.w=nn.Parameter(torch.zeros(config.hidden_size*2))
+        self.tanh2=nn.Tanh()
+        self.classify1=nn.Linear(config.hidden_size*2,config.hidden_size2)
+        self.classify2=nn.Linear(config.hidden_size2,config.num_classes)
+
+    def forward(self,x):
+        emb=self.embedding(x[0])#[64,32,300]
+        H,_=self.lstm(emb) #[batch_size,seq_len,hidden_size*num_direction] [64,32,256]
+        M=self.tanh1(H)#[64,32,256]
+        alpha=F.softmax(torch.matmul(M,self.w),dim=1).unsqueeze(-1)#[64,32,1]
+        out=H*alpha#[64,32,256]
+        out=torch.sum(out,1)#[64,256]
+        out=F.relu(out)
+        out=self.classify1(out)
+        out=self.classify2(out)
+        return out
+
+class RCNN(nn.Module):
+    def __init__(self,config):
+        super(RCNN,self).__init__()
+        if config.embedding_pretrained is not None:
+            self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
+        else:
+            self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+        self.lstm=nn.LSTM(config.embed,config.hidden_size,config.num_layers,
+                          batch_first=True,dropout=config.dropout,bidirectional=True)
+        self.maxpool=nn.MaxPool1d(config.pad_size)
+        self.classify=nn.Linear(config.hidden_size*2+config.embed,config.num_classes)
+
+    def forward(self,x):
+        embed=self.embedding(x[0])#[batch_size,seq_len,embeding]=[64,32,300]
+        out,_=self.lstm(embed)
+        out=torch.cat((out,embed),2)
+        out=F.relu(out)
+        out=out.permute(0,2,1)
+        out=self.maxpool(out).squeeze()
+        out=self.classify(out)
+        return out
+
+class DPCNN(nn.Module):
+    def __init__(self,config):
+        super(DPCNN,self).__init__()
+        if config.embedding_pretrained is not None:
+            self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
+        else:
+            self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+        self.conv_init=nn.Conv2d(1,config.num_filters,(3,config.embed))
+        self.conv=nn.Conv2d(config.num_filters,config.num_filters,(3,1))
+        self.max_pool=nn.MaxPool2d((3,1),stride=2)
+        self.padding1=nn.ZeroPad2d((0,0,1,1))
+        self.padding2=nn.ZeroPad2d((0,0,0,1))
+        self.relu=nn.ReLU()
+        self.classify=nn.Linear(config.num_filters,config.num_classes)
+
+    def forward(self,x):
+        x=x[0]
+        x=self.embedding(x)#[batch_size,seq_len,embed_size]
+        x=x.unsqueeze(1)#[batch_size,1,seq_len,embed_size]
+        x=self.conv_init(x)#[batch_size,out_channel(num_filters),seq_len+1-3,1]
+        x=self.padding1(x)#[batch_size,out_channel,seq_len,1]
+        x=self.relu(x)
+        x=self.conv(x)
+        x=self.padding1(x)
+        x=self.relu(x)
+        x=self.conv(x)#[batch_size,out_channel,seq_len-3+1,1]
+        while x.size()[2]>2:
+            x=self._block(x)
+        x=x.squeeze()#[batch_size,num_filters]
+        out=self.classify(x)
+        return out
+
+    def _block(self,x):
+        x=self.padding2(x)
+        x_temp=self.max_pool(x)
+        x=self.padding1(x_temp)
+        x=F.relu(x)
+        x=self.conv(x)
+
+        x=self.padding1(x)
+        x=F.relu(x)
+        x=self.conv(x)
+        x=x+x_temp
+        return x
+
+class Transformer(nn.Module):
+    def __init__(self,config):
+        super(Transformer,self).__init__()
+        if config.embedding_pretrained is not None:
+            self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
+        else:
+            self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+
+class Scaled_Dot_Product_Attention(nn.Module):
+    def __init__(self):
+        super(Scaled_Dot_Product_Attention,self).__init__()
+
+    def forward(self,Q,K,V,scale=None):
+        '''
+        :param Q: [batch_size,len_Q,dim_Q]
+        :param K: [batch_size,len_K,dim_K]
+        :param V: [batch_size,len_V,dim_V]
+        :param scale:
+        :return:
+        '''
+        attention=torch.matmul(Q,K.permute(0,2,1))
+        if scale:
+            attention=attention*scale
+        #if mask:
+        #   attention=attention.masked_fill_(mask==0,-1e9)
+        attention=F.softmax(attention,dim=-1)
+        context=torch.matmul(attention,V)
+        return context
+
+class Multi_Head_Attention(nn.Module):
+    def __init__(self,dim_model,num_head,dropout=0.0):
+        super(Multi_Head_Attention,self).__init__()
+        self.num_head=num_head
+        assert dim_model%num_head==0
+        self.dim_head=dim_model//self.num_head
+        self.fc_Q=nn.Linear(dim_model,num_head*self.dim_head)
+        self.fc_K=nn.Linear(dim_model,num_head*self.dim_head)
+        self.fc_V=nn.Linear(dim_model,num_head*self.dim_head)
+        self.attention=Scaled_Dot_Product_Attention()
+        self.fc=nn.Linear(num_head*self.dim_head,dim_model)
+        self.dropout=nn.Dropout(dropout)
+        self.layer_norm=nn.LayerNorm(dim_model)
+    def forward(self,x):
+        batch_size=x.size(0)
+        Q=self.fc_Q(x)
+        K=self.fc_K(x)
+        V=self.fc_V(x)
+        Q=Q.view(batch_size*self.num_head,-1,self.dim_head)
+        K = K.view(batch_size * self.num_head, -1, self.dim_head)
+        V = V.view(batch_size * self.num_head, -1, self.dim_head)
+        scale=K.size(-1)**(-0.5)
+        context=self.attention(Q,K,V,scale)
+        context=context.view(batch_size,-1,self.dim_head*self.num_head)
+        out=self.fc(context)
+        out=self.dropout(out)
+        out=x+out
+        out=self.layer_norm(out)
         return out
 
 class GlobalMaxPool1d(nn.Module):

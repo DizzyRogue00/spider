@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import copy
+from torch.nn.init import normal_
 
 class config(object):
     #
@@ -206,6 +207,21 @@ class Transformer(nn.Module):
             self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
         else:
             self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
+        self.postion_embedding=Positional_Encoding(config.embed,config.pad_size,config.dropout,config.device)
+        self.encoder=Encoder(config.dim_model,config.num_head,config.hidden,config.dropout)
+        self.encoders=nn.ModuleList(
+            [copy.deepcopy(self.encoder) for item in range(config.num_encoder)]
+        )
+        self.classify=nn.Linear(config.pad_size*config.dim_model,config.num_classes)
+
+    def forward(self,x):
+        out=self.embedding(x[0])
+        out=self.position_embedding(out)
+        for encoder in self.encoders:
+            out=encoder(out)
+        out=out.view(out.size(0),-1)
+        out=self.classify(out)
+        return out
 
 class Scaled_Dot_Product_Attention(nn.Module):
     def __init__(self):
@@ -257,6 +273,207 @@ class Multi_Head_Attention(nn.Module):
         out=x+out
         out=self.layer_norm(out)
         return out
+
+class Position_Wise_Feed_Forward(nn.Module):
+    def __init__(self,dim_model,hidden,dropout=0.0):
+        super(Position_Wise_Feed_Forward,self).__init__()
+        self.l1=nn.Linear(dim_model,hidden)
+        self.l2=nn.Linear(hidden,dim_model)
+        self.dropout=dropout
+        self.layer_norm=nn.LayerNorm(dim_model)
+
+    def forward(self,x):
+        out=self.l1(x)
+        out=F.relu(out)
+        out=self.l2(out)
+        out=self.dropout(out)
+        out=x+out
+        out=self.layer_norm(out)
+        return out
+
+class Positional_Encoding(nn.Module):
+    def __init__(self,embed,pad_size,dropout,device):
+        super(Positional_Encoding,self).__init__()
+        self.device=device
+        self.pe=torch.tensor([[pos/10000.0**(i//2*2.0/embed) for i in range(embed)] for pos in range(pad_size)])
+        self.pe[:,0::2]=np.sin(self.pe[:,0::2])
+        self.pe[:,1::2]=np.cos(self.pe[:,1::2])
+        self.dropout=nn.Dropout(dropout)
+    def forward(self,x):
+        out=x+nn.Parameter(self.pe,requires_grad=False).to(self.device)
+        out=self.dropout(out)
+        return out
+
+class Encoder(nn.Module):
+    def __init__(self,dim_model,num_head,hidden,dropout):
+        super(Encoder,self).__init__()
+        self.attention=Multi_Head_Attention(dim_model,num_head,dropout)
+        self.feed_forward=Position_Wise_Feed_Forward(dim_model,hidden,dropout)
+
+    def forward(self,x):
+        out=self.attention(x)
+        out=self.feed_forward(out)
+        return out
+
+class TokenEmbedding(nn.Module):
+    def __init__(self,vocab_size,hidden_size,pad_token_id=0,initializer_range=0.02):
+        super(TokenEmbedding,self).__init__()
+        self.embedding=nn.Embedding(vocab_size,hidden_size,padding_idx=pad_token_id)
+        self._reset_parameters(initializer_range)
+
+    def forward(self,input_ids):
+        '''
+        :param input_ids: [batch_size,seq_len]
+        :return: [batch_size,seq_len,hidden_size]
+        '''
+        return self.embedding(input_ids)
+
+    def _reset_parameters(self,initializer_range):
+        for p in self.parameters():
+            if p.dim()>1:
+                normal_(p,mean=0.0,std=initializer_range)
+
+class PositionalEmbedding(nn.Module):
+    def __init__(self,hidden_size,max_position_embeddings=512,initializer_range=0.02):
+        super(PositionalEmbedding,self).__init__()
+        self.embedding=nn.Embedding(max_position_embeddings,hidden_size)
+        self._reset_parameters(initializer_range)
+
+    def forward(self,position_ids):
+        '''
+        :param position_ids: [1,position_ids_len]
+        :return: [1,postion_ids_len,hidden_size]
+        '''
+        return self.embedding(position_ids)
+
+    def _reset_parameters(self,initializer_range):
+        for p in self.parameters():
+            if p.dim()>1:
+                normal_(p,mean=0.0,std=initializer_range)
+
+class SegementEmbedding(nn.Module):
+    def __init__(self,type_vocab_size,hidden_size,initializer_range=0.02):
+        super(SegementEmbedding,self).__init__()
+        self.embedding=nn.Embedding(type_vocab_size,hidden_size)
+        self._reset_parameters(initializer_range)
+
+    def forward(self,token_type_ids):
+        '''
+        :param token_type_ids: [batch_size,token_type_ids_len]
+        :return: [batch_size,token_type_ids_len,hidden_size]
+        '''
+        return self.embedding(token_type_ids)
+
+    def _reset_parameters(self,initializer_range):
+        for p in self.parameters():
+            if p.dim()>1:
+                normal_(p,mean=0.0,std=initializer_range)
+
+class BerEmbedding(nn.Module):
+    def __init__(self,config):
+        super(BerEmbedding,self).__init__()
+        self.word_embeddings=TokenEmbedding(
+            vocab_size=config.vocab_size,
+            hidden_size=config.hidden_size,
+            pad_token_id=config.pad_token_id,
+            initializer_range=config.initializer_range
+        )
+        self.position_embeddings=PositionalEmbedding(
+            max_position_embeddings=config.max_position_embeddings,
+            hidden_size=config.hidden_size,
+            initializer_range=config.initializer_range
+        )
+        self.token_type_embeddings=SegementEmbedding(
+            type_vocab_size=config.type_vocab_size,
+            hidden_size=config.hidden_size,
+            initializer_range=config.initializer_range
+        )
+        self.LayerNorm=nn.LayerNorm(config.hidden_size)
+        self.dropout=nn.Dropout(config.dropout)
+        self.register_buffer('position_ids',torch.arange(config.max_position_embeddings).expand(1,-1))
+        self.device=config.device
+
+    def forward(self,input_ids=None,position_ids=None,token_type_ids=None):
+        '''
+        :param input_ids: [batch_size,src_len]
+        :param position_ids: [0,1,2,...,src_len-1] shape: [1,src_len]
+        :param token_type_ids: [0,0,0,0,1,1,1] shape: [batch_size,src_len]
+        :return: [batch_size,src_len,hidden_size]
+        '''
+        src_len=input_ids[1]
+        token_embedding=self.word_embeddings(input_ids)
+        if position_ids is None:
+            position_ids=self.position_ids[:,:src_len]
+        positional_embedding=self.position_embeddings(position_ids)
+        if token_type_ids is None:
+            token_type_ids=torch.zeros_like(input_ids,device=self.device)
+        segement_embedding=self.token_type_embeddings(token_type_ids)
+        embeddings=token_embedding+positional_embedding+segement_embedding
+        embeddings=self.LayerNorm(embeddings)
+        embeddings=self.dropout(embeddings)
+        return embeddings
+
+class MymultiheadAttention(nn.Module):
+    def __init__(self,embed_dim,num_heads,dropout=0,bias=True):
+        '''
+        :param embed_dim: word_dimenssions
+        :param num_heads:
+        :param dropout:
+        :param bias:
+        '''
+        self.embed_dim=embed_dim
+        self.head_dim=embed_dim//num_heads #d_k,d_v
+        self.kdim=self.head_dim
+        self.vdim=self.head_dim
+        self.num_heads=num_heads
+        self.dropout=dropout
+        assert self.head_dim*num_heads==self.embed_dim
+
+        self.q=nn.Linear(embed_dim,embed_dim,bias)
+        self.k = nn.Linear(embed_dim, embed_dim, bias)
+        self.v = nn.Linear(embed_dim, embed_dim, bias)
+        self.out=nn.Linear(embed_dim,embed_dim,bias)
+
+    def forward(self,query,key,value):#attn_mask=None,#key_padding_mask=None):
+        return multi_head_attention_forward(query,key,value,self.num_heads,self.dropout,training=True,
+                                            q_matrix=self.q,
+                                            k_matrix=self.k,
+                                            v_matrix=self.v,
+                                            out=self.out)
+
+def multi_head_attention_forward(query,#[batch_size,target_len,embed_dim]
+                                 key,#[batch_size,src_len,embed_dim]
+                                 value,#[batch_size,src_len,embed_dim]
+                                 num_heads,
+                                 dropout,
+                                 out,
+                                 training=True,
+                                 #key_padding_mask=None, #[batch_size,src_len/target_len]
+                                 q_matrix=None,
+                                 k_matrix=None,
+                                 v_matrix=None,
+                                 #attn_mask=None,#[target_len,src_len] or [num_heads*batch_size,target_len,src_len]
+                                 ):
+    q=q_matrix(query)
+    #[batch_size,target_len,kdim*num_heads]
+    k=k_matrix(key)
+    v=v_matrix(value)
+    batch_size,target_len,embed_dim=query.size()
+    head_dim=embed_dim//num_heads
+    scaling=float(head_dim)**-0.5
+    q=q*scaling
+    q=q.contiguous().view(batch_size*num_heads,-1,head_dim)
+    k = k.contiguous().view(batch_size * num_heads, -1, head_dim)
+    v = v.contiguous().view(batch_size * num_heads, -1, head_dim)
+    attn_output_weights=torch.bmm(q,k.transpose(1,2))#[batch_size*num_heads,target_len,src_len]
+    attn_output_weights=F.softmax(attn_output_weights,dim=-1)#[batch_size*num_heads,target_len,src_len]
+    attn_output_weights=F.dropout(attn_output_weights,p=dropout,training=training)
+    attn_output=torch.bmm(attn_output_weights,v)#[batch_size*num_heads,target_len,vdim]
+    attn_output=attn_output.contiguous().view(batch_size,-1,embed_dim)
+    Z=out(attn_output)
+    return Z
+
+
 
 class GlobalMaxPool1d(nn.Module):
     def __init__(self):

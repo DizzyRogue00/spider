@@ -7,7 +7,7 @@ from torch.nn.init import normal_
 
 class config(object):
     #
-    def __init__(self,model_name,dataset,embedding):
+    def __init__(self,model_name,dataset,embedding='random',train_path=None,dev_path=None,test_path=None):
         self.model_name = model_name
         #self.train_path = dataset + '/data/train.txt'                                # training set
         #self.dev_path = dataset + '/data/dev.txt'                                    # validation set
@@ -22,9 +22,9 @@ class config(object):
         #    if embedding != 'random' else None  # 预训练词向量
         #self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # 设备
 
-        self.train_path = '/data/train.txt'                                # training set
-        self.dev_path = '/data/dev.txt'                                    # validation set
-        self.test_path = '/data/test.txt'                                  # test set
+        self.train_path = train_path                               # training set
+        self.dev_path = dev_path                                  # validation set
+        self.test_path = test_path                                 # test set
 
         self.class_list=[0,1]   #class list
         self.vocab_path='/data/vocab.pkl' #word dictionary {word: word id} .pkl import pickle;open();load()
@@ -61,6 +61,27 @@ class config(object):
         self.last_hidden=512
         self.num_head=5
         self.num_encoder=2
+
+        #Bert
+        self.bert_hidden_size=300
+        self.bert_vocab_size=21128
+        self.bert_pad_token_id=0
+        self.bert_initializer_range=0.02
+        self.bert_max_position_embeddings=512
+        self.bert_type_vocab_size=2
+        self.bert_embedding_dropout=0.1
+        self.bert_num_head=5 #12
+        self.bert_attention_dropout=0.1
+        self.bert_hidden_dropout=0.1
+        self.bert_intermediate_size=3072
+        self.bert_hidden_act='relu'
+        self.bert_num_hidden_layers=12
+        self.bert_pooler_type='first_token_transform'
+        #"directionality": "bidi",
+        #"pooler_fc_size": 768,
+        #"pooler_num_attention_heads": 12,
+        #"pooler_num_fc_layers": 3,
+        #"pooler_size_per_head": 128,
 
 class TextCNN_trail(nn.Module):
     def __init__(self,config):
@@ -315,6 +336,19 @@ class Encoder(nn.Module):
         out=self.feed_forward(out)
         return out
 
+def get_activation(act_str):
+    act=act_str.lower()
+    if act=='linear':
+        return None
+    elif act=='relu':
+        return nn.ReLU()
+    elif act=="gelu":
+        return nn.GELU()
+    elif act=='tanh':
+        return nn.Tanh()
+    else:
+        raise ValueError("Unsupported activation:%s"%act)
+
 class TokenEmbedding(nn.Module):
     def __init__(self,vocab_size,hidden_size,pad_token_id=0,initializer_range=0.02):
         super(TokenEmbedding,self).__init__()
@@ -369,28 +403,28 @@ class SegementEmbedding(nn.Module):
             if p.dim()>1:
                 normal_(p,mean=0.0,std=initializer_range)
 
-class BerEmbedding(nn.Module):
+class BertEmbedding(nn.Module):
     def __init__(self,config):
-        super(BerEmbedding,self).__init__()
+        super(BertEmbedding,self).__init__()
         self.word_embeddings=TokenEmbedding(
-            vocab_size=config.vocab_size,
-            hidden_size=config.hidden_size,
-            pad_token_id=config.pad_token_id,
-            initializer_range=config.initializer_range
+            vocab_size=config.bert_vocab_size,
+            hidden_size=config.bert_hidden_size,
+            pad_token_id=config.bert_pad_token_id,
+            initializer_range=config.bert_initializer_range
         )
         self.position_embeddings=PositionalEmbedding(
-            max_position_embeddings=config.max_position_embeddings,
-            hidden_size=config.hidden_size,
-            initializer_range=config.initializer_range
+            max_position_embeddings=config.bert_max_position_embeddings,
+            hidden_size=config.bert_hidden_size,
+            initializer_range=config.bert_initializer_range
         )
         self.token_type_embeddings=SegementEmbedding(
-            type_vocab_size=config.type_vocab_size,
-            hidden_size=config.hidden_size,
-            initializer_range=config.initializer_range
+            type_vocab_size=config.bert_type_vocab_size,
+            hidden_size=config.bert_hidden_size,
+            initializer_range=config.bert_initializer_range
         )
-        self.LayerNorm=nn.LayerNorm(config.hidden_size)
-        self.dropout=nn.Dropout(config.dropout)
-        self.register_buffer('position_ids',torch.arange(config.max_position_embeddings).expand(1,-1))
+        self.LayerNorm=nn.LayerNorm(config.bert_hidden_size)
+        self.dropout=nn.Dropout(config.bert_embedding_dropout)
+        self.register_buffer('position_ids',torch.arange(config.bert_max_position_embeddings).expand(1,-1))
         self.device=config.device
 
     def forward(self,input_ids=None,position_ids=None,token_type_ids=None):
@@ -472,6 +506,152 @@ def multi_head_attention_forward(query,#[batch_size,target_len,embed_dim]
     attn_output=attn_output.contiguous().view(batch_size,-1,embed_dim)
     Z=out(attn_output)
     return Z
+
+class BertSelfAttention(nn.Module):
+    def __init__(self,config):
+        super(BertSelfAttention,self).__init__()
+        self.multi_head_attention=MymultiheadAttention(embed_dim=config.bert_hidden_size,
+                                                       num_heads=config.bert_num_head,
+                                                       dropout=config.bert_attention_dropout)
+
+    def forward(self,query,key,value):
+        return self.multi_head_attention(query,key,value)
+
+class BertSelfOutput(nn.Module):
+    def __init__(self,config):
+        super(BertSelfOutput,self).__init__()
+        self.LayerNorm=nn.LayerNorm(config.bert_hidden_size,eps=1e-12)
+        self.dropout=nn.Dropout(config.bert_hidden_dropout)
+
+    def forward(self,hidden_states,input_tensor):
+        '''
+        :param hidden_states: [batch_size,src_len,hidden_size]
+        :param input_tensor: [batch_size,src_len,hidden_size]
+        :return: [batch_size,src_len,hidden_size]
+        '''
+        hidden_states=self.dropout(hidden_states)
+        hidden_states=self.LayerNorm(hidden_states+input_tensor)
+        return hidden_states
+
+class BertAttention(nn.Module):
+    def __init__(self,config):
+        super(BertAttention,self).__init__()
+        self.attention=BertSelfAttention(config)
+        self.output=BertSelfOutput(config)
+
+    def forward(self,hidden_states):
+        '''
+        :param hidden_states: [batch_size,src_len,hidden_size]
+        :return: [batch_size,src_len,hidden_size]
+        '''
+        self.outputs=self.attention(hidden_states,hidden_states,hidden_states)
+        self.outputs=self.output(self.outputs,hidden_states)
+        return self.outputs
+
+class BertIntermediateLayer(nn.Module):
+    def __init__(self,config):
+        super(BertIntermediateLayer,self).__init__()
+        self.dense=nn.Linear(config.bert_hidden_size,config.bert_intermediate_size)
+        if isinstance(config.bert_hidden_act,str):
+            self.intermediate_act=get_activation(config.bert_hidden_act)
+        else:
+            self.intermediate_act=nn.ReLU()
+
+    def forward(self,hidden_states):
+        hidden_states=self.dense(hidden_states)
+        if self.intermediate_act is None:
+            hidden_states=hidden_states
+        else:
+            hidden_states=self.intermediate_act(hidden_states)
+        return hidden_states
+
+class BertOutput(nn.Module):
+    def __init__(self,config):
+        super(BertOutput,self).__init__()
+        self.dense=nn.Linear(config.bert_intermediate_size,config.bert_hidden_size)
+        self.LayerNorm=nn.LayerNorm(config.bert_hidden_size,eps=1e-12)
+        self.dropout=nn.Dropout(config.bert_hidden_dropout)
+
+    def forward(self,hidden_states,input_tensor):
+        '''
+        :param hidden_states: [batch_size,src_len,intermediate_size]
+        :param input_tensor: [batch_size,src_len,hidden_size]
+        :return: [batch_size,src_len.hidden_size]
+        '''
+        hidden_states=self.dense(hidden_states)
+        hidden_states=self.dropout(hidden_states)
+        hidden_states=self.LayerNorm(hidden_states+input_tensor)
+        return hidden_states
+
+class BertLayer(nn.Module):
+    def __init__(self,config):
+        super(BertLayer,self).__init__()
+        self.bert_attention=BertAttention(config)
+        self.bert_intermediate=BertIntermediateLayer(config)
+        self.bert_output=BertOutput(config)
+
+    def forward(self,hidden_states):
+        '''
+        :param hidden_states: [batch_size,src_len,embed_dim]
+        :return:
+        '''
+        hidden_states=self.bert_attention(hidden_states)
+        intermediate_states=self.bert_intermediate(hidden_states)
+        layer_output=self.bert_output(intermediate_states,hidden_states)
+        return layer_output
+
+class BertEncoder(nn.Module):
+    def __init__(self,config):
+        super(BertEncoder,self).__init__()
+        self.config=config
+        self.bert_layers=nn.ModuleList(
+            [BertLayer(config) for _ in range(config.bert_num_hidden_layers)]
+        )
+
+    def forward(self,hidden_states):
+        all_encoder_layers=[]
+        layer_output=hidden_states
+        for i,layer_module in enumerate(self.bert_layers):
+            layer_output=layer_module(layer_output)
+            all_encoder_layers.append(layer_output)
+        return all_encoder_layers
+
+class BertPooler(nn.Module):
+    def __init__(self,config):
+        super(BertPooler,self).__init__()
+        self.dense=nn.Linear(config.bert_hidden_size,config.bert_hidden_size)
+        self.activation=nn.ReLU()
+        self.config=config
+
+    def forward(self,hidden_states):
+        '''
+        :param hidden_states: [batch_size,src_len,hidden_size]
+        :return: [batch_size,hidden_size]
+        '''
+        if self.config.bert_pooler_type=='first_token_transform':
+            token_tensor=hidden_states[:,0].reshape(-1,self.config.bert_hidden_size)
+        elif self.config.bert_pooler_type=='all_token_average':
+            token_tensor=torch.mean(hidden_states,dim=1)
+        pool_output=self.dense(token_tensor)
+        pool_output=self.activation(pool_output)
+        return pool_output
+
+class BertModel(nn.Module):
+    def __init__(self,config):
+        super().__init__()
+        self.bert_embedding=BertEmbedding(config)
+        self.bert_encoder=BertEncoder(config)
+        self.bert_pooler=BertPooler(config)
+        self.config.config
+
+    def forward(self,input_ids=None,token_type_ids=None,position_ids=None):
+        embedding_output=self.bert_embedding(input_ids=input_ids,
+                                             position_ids=position_ids,
+                                             token_type_ids=token_type_ids)
+        all_encoder_outputs=self.bert_encoder(embedding_output)
+        sequence_output=all_encoder_outputs[-1]
+        pooled_output=self.bert_pooler(sequence_output)
+        return pooled_output,all_encoder_outputs
 
 
 

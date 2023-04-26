@@ -7,7 +7,7 @@ from torch.nn.init import normal_
 
 class config(object):
     #
-    def __init__(self,model_name,dataset,embedding='random',train_path=None,dev_path=None,test_path=None):
+    def __init__(self,model_name,embedding='random',train_path=None,dev_path=None,test_path=None):
         self.model_name = model_name
         #self.train_path = dataset + '/data/train.txt'                                # training set
         #self.dev_path = dataset + '/data/dev.txt'                                    # validation set
@@ -27,12 +27,10 @@ class config(object):
         self.test_path = test_path                                 # test set
 
         self.class_list=[0,1]   #class list
-        self.vocab_path='/data/vocab.pkl' #word dictionary {word: word id} .pkl import pickle;open();load()
-        self.save_path ='/data/' + self.model_name + '.ckpt'        # result of tranined model
-        self.log_path = '/data/log/' + self.model_name
-        self.embedding_pretrained = torch.tensor(
-            np.load('/data/' + embedding)["embeddings"].astype('float32'))\
-            if embedding != 'random' else None                                       # 预训练词向量
+        self.vocab_path='data/vocab.pkl' #word dictionary {word: word id} .pkl import pickle;open();load()
+        self.save_path ='data/' + self.model_name + '.ckpt'        # result of tranined model
+        self.log_path = 'data/log/' + self.model_name
+        self.embedding_pretrained = torch.tensor(np.load('data/' + embedding)["embeddings"].astype('float32')) if embedding != 'random' else None # 预训练词向量
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   # 设备
 
         self.dropout = 0.5                                              # 随机失活

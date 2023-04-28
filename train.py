@@ -40,7 +40,7 @@ def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_
             model.zero_grad()
             loss=F.cross_entropy(output,labels)
             loss.backward()
-            model.step()
+            optimizer.step()
             if total_batch%1==0:
                 true=labels.data.cpu()
                 pred=torch.max(output.data,1)[1].cpu()
@@ -104,7 +104,7 @@ def evaluate(config,model,data_iter):
             loss=F.cross_entropy(output,labels)
             loss_total+=loss
             labels = labels.data.cpu().numpy()
-            pred = torch.max(output.data, 1)[1].cpu.numpy()
+            pred = torch.max(output.data, 1)[1].cpu().numpy()
             labels_all = np.append(labels_all, labels)
             predict_all = np.append(predict_all, pred)
     acc = metrics.accuracy_score(labels_all, predict_all)

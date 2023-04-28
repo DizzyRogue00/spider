@@ -34,22 +34,28 @@ def build_vocab(file_path, tokenizer,max_size,min_freq): # construct the vocabua
         vocab_dic.update({UNK:len(vocab_dic),PAD:len(vocab_dic)+1})
     return vocab_dic
 
-def build_dataset(config,use_word):
+def build_dataset(config,use_word,path):
     if use_word:
         tokenizer=lambda x:x.split(' ') # word-level
     else:
         tokenizer=lambda x:[y for y in x] # char-level
     if os.path.exists(config.vocab_path):
-        vocab_dict=pkl.load(open(config.vocab_path))
+        with open(config.vocab_path,'rb') as f:
+            #vocab_dict=pkl.load(open(config.vocab_path))
+            vocab_dict = pkl.load(f)
     else:
         vocab_dict=build_vocab(config.train_path,tokenizer=tokenizer,max_size=MAX_VOCAB_SIZE,min_freq=1)
-        pkl.dump(vocab_dict,open(config.vocab_path,'wb'))
+        with open(config.train_path,'wb') as f:
+            pkl.dump(vocab_dict,f)
+            #pkl.dump(vocab_dict,open(config.vocab_path,'wb'))
     print(f"Vocabuary size: {len(vocab_dict)}")
 
-    def load_dataset(path,pad_size=32):
+    def load_dataset(pad_size=32):
         contents=[]
+        with open(path, 'r', encoding="UTF-8") as f:
+            num_line = sum(1 for line in f)
         with open(path,'r',encoding="UTF-8") as f:
-            for line in tqdm(f):
+            for line in tqdm(f,total=num_line):
                 lin=line.strip()
                 if not lin:
                     continue
@@ -78,10 +84,11 @@ def build_dataset(config,use_word):
                     contents.append((words,seq_len))
         return contents #[([...],0,32),([...],1,32)]
 
-    train=load_dataset(config.train_path,config.pad_size)
-    valid=load_dataset(config.dev_path,config.pad_size)
-    test=load_dataset(config.test_path,config.pad_size)
-    return vocab_dict, train, valid, test
+    #train=load_dataset(config.train_path,config.pad_size)
+    #valid=load_dataset(config.dev_path,config.pad_size)
+    #test=load_dataset(config.test_path,config.pad_size)
+    data = load_dataset(config.pad_size)
+    return vocab_dict, data
 
 class DataIterater(object):
     def __init__(self,batches,batch_size,device):

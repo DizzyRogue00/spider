@@ -28,6 +28,17 @@ if __name__=='__main__':
     torch.cuda.manual_seed_all(1)
     torch.backends.cudnn.deterministic=True
 
-    start_time=time.time()
-    print('Loading data...')
-    
+    if model_name !='Bert':
+        start_time=time.time()
+        print('Loading data...')
+        vocab_dict,train_data=build_dataset(config, args.word, config.train_path)
+        train_iter=build_iter(train_data, config)
+        time_diff=get_time_diff(start_time)
+        print("Time Usage:",time_diff)
+
+        config.n_vocab = len(vocab_dict)
+        temp_model_class=getattr(x,model_name)
+        model=temp_model_class(config).to(config.device)
+        init_network(model)
+        print(model.parameters)
+        train(config,model,train_iter,train_iter)#(config,model,train_iter,train_original)

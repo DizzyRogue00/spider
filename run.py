@@ -5,6 +5,7 @@ from train import init_network, train
 from importlib import import_module
 import argparse
 from word2vec import build_dataset,build_iter,get_time_diff
+#python -m tensorboard.main --logdir=./data/log --port=6006
 
 parser=argparse.ArgumentParser(description='Text Classification')
 parser.add_argument('--model',type=str,required=True,help='Choose a model: TextCNN_trail,TextRNN,TextRNN_Attention,RCNN,DPCNN,Transformer,Bert') #python xx.py --model=

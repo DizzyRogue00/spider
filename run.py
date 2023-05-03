@@ -32,7 +32,7 @@ if __name__=='__main__':
     if model_name !='Bert':
         start_time=time.time()
         print('Loading data...')
-        vocab_dict,train_data=build_dataset(config, args.word, config.train_path)
+        vocab_dict,train_data=build_dataset(config, args.word, config.train_path)#train_data :[(sentence,label,seq_len)]
         train_iter=build_iter(train_data, config)
         time_diff=get_time_diff(start_time)
         print("Time Usage:",time_diff)

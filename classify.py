@@ -95,15 +95,15 @@ class TextCNN_trail(nn.Module):
         self.classify=nn.Linear(config.num_filters*len(config.filter_sizes),config.num_classes)
 
     def conv_activate_and_pool(self,x,conv):
-        x=F.relu(conv(x)).squeeze(3)
-        x=F.max_pool1d(x,x.size(2)).squeeze(2)
+        x=F.relu(conv(x)).squeeze(3)#[batch_size,out_channel,seq_len]
+        x=F.max_pool1d(x,x.size(2)).squeeze(2)#[batch_size,out_channel]
         return x
 
     def forward(self,x):#include batch_size
         out=self.embedding(x[0])
         #out=out.unsqueeze(0)#if no batch_size
-        out=out.unsqueeze(1)
-        out=torch.cat([self.conv_activate_and_pool(out,conv) for conv in self.convs],dim=1)
+        out=out.unsqueeze(1)#[batch_size,1,seq_len,embedding_dim]
+        out=torch.cat([self.conv_activate_and_pool(out,conv) for conv in self.convs],dim=1)#[batch_size,num_filters*out_channels]
         out=self.dropout(out)
         out=self.classify(out)
         return out

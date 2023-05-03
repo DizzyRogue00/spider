@@ -36,6 +36,8 @@ def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_
     for epoch in range(config.num_epochs):
         print('Epoch [{}/{}]'.format(epoch+1,config.num_epochs))
         for i,(train_data,labels) in enumerate(train_iter):
+            print(train_data[0])
+            print(i,train_data[0][0])
             output=model(train_data)#[batch_size,num_classes]
             model.zero_grad()
             loss=F.cross_entropy(output,labels)
@@ -54,19 +56,20 @@ def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_
                     last_improve=total_batch
                 else:
                     improve=''
-            time_dif=get_time_diff(start_time)
-            msg = 'Iter: {0:>6},  Train Batch Loss: {1:>5.3},  Train Batch Acc: {2:>6.2%}, Train Batch F1 Score:{3:>5.3}  Val Loss: {4:>5.2},  Val Acc: {5:>6.2%},Val Report:{6},Val Confusion Matrix:{7}  Time: {8} {9}'
-            print(msg.format(total_batch,loss.item(),train_batch_acc,train_batch_f1_score,train_loss,train_acc,train_report,train_confusion,time_dif,improve))
-            writer.add_scalar('Batch Loss/Train',loss.item(),total_batch)
-            writer.add_scalar('Batch Accu/Train',train_batch_acc,total_batch)
-            writer.add_scalar('Loss/Train',train_loss,total_batch)
-            writer.add_scalar('Accu/Train',train_acc,total_batch)
-            model.train()
+                time_dif=get_time_diff(start_time)
+                msg = 'Iter: {0:>6},  Train Batch Loss: {1:>5.3},  Train Batch Acc: {2:>6.2%}, Train Batch F1 Score:{3:>5.3}  Val Loss: {4:>5.2},  Val Acc: {5:>6.2%},Val Report:{6},Val Confusion Matrix:{7}  Time: {8} {9}'
+                print(msg.format(total_batch,loss.item(),train_batch_acc,train_batch_f1_score,train_loss,train_acc,train_report,train_confusion,time_dif,improve))
+                writer.add_scalar('Batch Loss/Train',loss.item(),total_batch)
+                writer.add_scalar('Batch Accu/Train',train_batch_acc,total_batch)
+                writer.add_scalar('Loss/Train',train_loss,total_batch)
+                writer.add_scalar('Accu/Train',train_acc,total_batch)
+                model.train()
             total_batch+=1
             if total_batch-last_improve >config.require_improvement:
                 print("No optimization for a long time, auto-stopping")
                 flag=True
                 break
+            print(i,flag)
         if flag:
             break
     writer.close()

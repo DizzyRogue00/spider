@@ -40,7 +40,7 @@ def build_dataset(config,use_word,path):
     else:
         tokenizer=lambda x:[y for y in x] # char-level
     if os.path.exists(config.vocab_path):
-        with open(config.vocab_path,'rb') as f:
+        with open(config.vocab_path,'rb'    ) as f:
             #vocab_dict=pkl.load(open(config.vocab_path))
             vocab_dict = pkl.load(f)
     else:

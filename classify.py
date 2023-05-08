@@ -37,7 +37,7 @@ class config(object):
         self.require_improvement = 1000                                 # 若超过1000batch效果还没提升，则提前结束训练
         self.num_classes = len(self.class_list)                         # 类别数
         self.n_vocab = 0                                                # 词表大小，在运行时赋值
-        self.num_epochs = 20                                            # epoch数
+        self.num_epochs =20 #Transformer 100                                        # epoch数
         #self.batch_size = 128                                           # mini-batch大小
         self.batch_size = 16  # mini-batch大小
         self.pad_size = 32                                             # 每句话处理成的长度(短填长切)
@@ -226,7 +226,7 @@ class Transformer(nn.Module):
             self.embedding=nn.Embedding.from_pretrained(config.embedding_pretrained,freeze=False)
         else:
             self.embedding=nn.Embedding(config.n_vocab,config.embed,padding_idx=config.n_vocab-1)
-        self.postion_embedding=Positional_Encoding(config.embed,config.pad_size,config.dropout,config.device)
+        self.position_embedding=Positional_Encoding(config.embed,config.pad_size,config.dropout,config.device)
         self.encoder=Encoder(config.dim_model,config.num_head,config.hidden,config.dropout)
         self.encoders=nn.ModuleList(
             [copy.deepcopy(self.encoder) for item in range(config.num_encoder)]
@@ -298,7 +298,7 @@ class Position_Wise_Feed_Forward(nn.Module):
         super(Position_Wise_Feed_Forward,self).__init__()
         self.l1=nn.Linear(dim_model,hidden)
         self.l2=nn.Linear(hidden,dim_model)
-        self.dropout=dropout
+        self.dropout=nn.Dropout(dropout)
         self.layer_norm=nn.LayerNorm(dim_model)
 
     def forward(self,x):

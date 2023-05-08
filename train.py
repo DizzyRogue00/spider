@@ -11,13 +11,17 @@ from tensorboardX import SummaryWriter
 def init_network(model,method='xavier',exclude='embedding',seed=1223):
     for name,w in model.named_parameters():
         if exclude not in name:
+            dimensions=w.dim()
             if 'weight' in name:
-                if method =='xavier':
-                    nn.init.xavier_normal_(w)
-                elif method=='kaiming':
-                    nn.init.kaiming_normal_(w)
-                else:
+                if dimensions<2:
                     nn.init.normal_(w)
+                else:
+                    if method =='xavier':
+                        nn.init.xavier_normal_(w)
+                    elif method=='kaiming':
+                        nn.init.kaiming_normal_(w)
+                    else:
+                        nn.init.normal_(w)
             elif 'bias' in name:
                 nn.init.constant_(w,0)
             else:
@@ -35,9 +39,8 @@ def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_
     writer=SummaryWriter(log_dir=config.log_path+'/'+time.strftime('%m-%d_%H.%M',time.localtime()))
     for epoch in range(config.num_epochs):
         print('Epoch [{}/{}]'.format(epoch+1,config.num_epochs))
+
         for i,(train_data,labels) in enumerate(train_iter):
-            print(train_data[0])
-            print(i,train_data[0][0])
             output=model(train_data)#[batch_size,num_classes]
             model.zero_grad()
             loss=F.cross_entropy(output,labels)
@@ -70,6 +73,7 @@ def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_
                 flag=True
                 break
             print(i,flag)
+
         if flag:
             break
     writer.close()

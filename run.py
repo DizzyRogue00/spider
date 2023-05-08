@@ -5,7 +5,9 @@ from train import init_network, train
 from importlib import import_module
 import argparse
 from word2vec import build_dataset,build_iter,get_time_diff
+import copy
 #python -m tensorboard.main --logdir=./data/log --port=6006
+#model.load_state_dict(torch.load(config.save_path))
 
 parser=argparse.ArgumentParser(description='Text Classification')
 parser.add_argument('--model',type=str,required=True,help='Choose a model: TextCNN_trail,TextRNN,TextRNN_Attention,RCNN,DPCNN,Transformer,Bert') #python xx.py --model=
@@ -34,6 +36,7 @@ if __name__=='__main__':
         print('Loading data...')
         vocab_dict,train_data=build_dataset(config, args.word, config.train_path)#train_data :[(sentence,label,seq_len)]
         train_iter=build_iter(train_data, config)
+        dev_iter=copy.deepcopy(train_iter)
         time_diff=get_time_diff(start_time)
         print("Time Usage:",time_diff)
 
@@ -42,4 +45,4 @@ if __name__=='__main__':
         model=temp_model_class(config).to(config.device)
         init_network(model)
         print(model.parameters)
-        train(config,model,train_iter,train_iter)#(config,model,train_iter,train_original)
+        train(config,model,train_iter,dev_iter)#(config,model,train_iter,train_original)

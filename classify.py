@@ -4,6 +4,12 @@ import torch.nn.functional as F
 import numpy as np
 import copy
 from torch.nn.init import normal_
+import six
+import logging
+import json
+import os
+from copy import deepcopy
+from utils_bert import logger_init
 
 class config(object):
     #
@@ -21,6 +27,11 @@ class config(object):
         #    np.load(dataset + '/data/' + embedding)["embeddings"].astype('float32')) \
         #    if embedding != 'random' else None  # 预训练词向量
         #self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # 设备
+        self.project_dir=os.path.dirname(os.path.abspath(__file__))
+        self.pretrained_model_dir=os.path.join('bert_pretrained','bert-base-chinese')
+        self.bert_vocab_path=os.path.join(self.pretrained_model_dir,'vocab.txt')
+        self.log_save_dir=os.path.join(self.project_dir,'data','log')
+        logger_init(log_file_name='Bert',log_level=logging.INFO,log_dir=self.log_save_dir)
 
         self.train_path = train_path                               # training set
         self.dev_path = dev_path                                  # validation set
@@ -61,7 +72,7 @@ class config(object):
         self.num_encoder=2
 
         #Bert
-        self.bert_hidden_size=300
+        self.bert_hidden_size=768
         self.bert_vocab_size=21128
         self.bert_pad_token_id=0
         self.bert_initializer_range=0.02
@@ -80,6 +91,25 @@ class config(object):
         #"pooler_num_attention_heads": 12,
         #"pooler_num_fc_layers": 3,
         #"pooler_size_per_head": 128,
+        logging.info('current configuration')
+        for key,value in self.__dict__.items():
+            logging.info(f'{key}={value}')
+
+    @classmethod
+    def from_dict(cls,json_object):
+        "Constructs from a dictionary of parameters"
+        config1=config()
+        for (key,value) in six.iteritems(json_object):
+            config1.__dict__[key]=value
+        return config1
+
+    @classmethod
+    def from_json_file(cls,json_file):
+        "Constructs from a json file"
+        with open(json_file,'r') as reader:
+            text=reader.read()
+        logging.info(f'Successfully load configuration file {json_file}')
+        return cls.from_dict(json.loads(text))
 
 class TextCNN_trail(nn.Module):
     def __init__(self,config):
@@ -358,7 +388,7 @@ class TokenEmbedding(nn.Module):
         :param input_ids: [batch_size,seq_len]
         :return: [batch_size,seq_len,hidden_size]
         '''
-        return self.embedding(input_ids)
+        return self.embedding(input_ids[0])
 
     def _reset_parameters(self,initializer_range):
         for p in self.parameters():
@@ -427,18 +457,18 @@ class BertEmbedding(nn.Module):
 
     def forward(self,input_ids=None,position_ids=None,token_type_ids=None):
         '''
-        :param input_ids: [batch_size,src_len]
+        :param input_ids: ([batch_size,src_len],[batch_size]
         :param position_ids: [0,1,2,...,src_len-1] shape: [1,src_len]
         :param token_type_ids: [0,0,0,0,1,1,1] shape: [batch_size,src_len]
         :return: [batch_size,src_len,hidden_size]
         '''
-        src_len=input_ids[1]
+        src_len=input_ids[0].size(1)
         token_embedding=self.word_embeddings(input_ids)
         if position_ids is None:
             position_ids=self.position_ids[:,:src_len]
         positional_embedding=self.position_embeddings(position_ids)
         if token_type_ids is None:
-            token_type_ids=torch.zeros_like(input_ids,device=self.device)
+            token_type_ids=torch.zeros_like(input_ids[0],device=self.device)
         segement_embedding=self.token_type_embeddings(token_type_ids)
         embeddings=token_embedding+positional_embedding+segement_embedding
         embeddings=self.LayerNorm(embeddings)
@@ -453,6 +483,7 @@ class MymultiheadAttention(nn.Module):
         :param dropout:
         :param bias:
         '''
+        super().__init__()
         self.embed_dim=embed_dim
         self.head_dim=embed_dim//num_heads #d_k,d_v
         self.kdim=self.head_dim
@@ -636,11 +667,11 @@ class BertPooler(nn.Module):
 
 class BertModel(nn.Module):
     def __init__(self,config):
-        super().__init__()
+        super(BertModel,self).__init__()
         self.bert_embedding=BertEmbedding(config)
         self.bert_encoder=BertEncoder(config)
         self.bert_pooler=BertPooler(config)
-        self.config.config
+        self.config=config
 
     def forward(self,input_ids=None,token_type_ids=None,position_ids=None):
         embedding_output=self.bert_embedding(input_ids=input_ids,
@@ -651,7 +682,66 @@ class BertModel(nn.Module):
         pooled_output=self.bert_pooler(sequence_output)
         return pooled_output,all_encoder_outputs
 
+    @classmethod
+    def from_pretrained(cls,config,pretrained_model_dir=None):
+        model=cls(config)
+        pretrained_model_path=os.path.join(pretrained_model_dir,'pytorch_model.bin')
+        if not os.path.exists(pretrained_model_path):
+            raise ValueError(f"<path：No such file in the directory {pretrained_model_path}, please check carefully！>\n"
+                             f"Chinese version model download：https://huggingface.co/bert-base-chinese/tree/main\n"
+                             f"English version model download：https://huggingface.co/bert-base-uncased/tree/main\n")
+        load_params=torch.load(pretrained_model_path)
+        state_dict=deepcopy(model.state_dict())
+        load_params_names=list(load_params.keys())[:-8]
+        state_dict_names=list(state_dict.keys())[1:]
+        for i in range(len(load_params_names)):
+            state_dict[state_dict_names[i]]=load_params[load_params_names[i]]
+            logging.info(f'successfully assign parameters from {load_params_names[i]} to {state_dict_names[i]}')
+        model.load_state_dict(state_dict)
+        return model
+    #BertModel.frompretrained(config,pretrained_model_dir)
+#test
+# from classify import config,BertModel
+# config_model=config('Bert')
+# bert_model=BertModel(config_model)
+# print('Bert parameters')
+# print(len(bert_model.state_dict()))
+# for param in bert_model.state_dict():
+#     print(param,'\t',bert_model.state_dict()[param].size())
+#load_paras=torch.load('bert_pretrained/bert-base-chinese/pytorch_model.bin')
+# print(type(load_paras))
+# print(len(list(load_paras.keys())))
+# for name in load_paras.keys():
+#     print(name,'\t',load_paras[name].size())
 
+class BertForSentenceClassification(nn.Module):
+    def __init__(self,config,bert_pretrained_model_dir=None):
+        super().__init__()
+        self.num_labels=config.num_classes
+        if bert_pretrained_model_dir is not None:
+            self.bert=BertModel.from_pretrained(config,bert_pretrained_model_dir)
+        else:
+            self.bert=BertModel(config)
+        self.dropout=nn.Dropout(config.bert_hidden_dropout)
+        self.classifier=nn.Linear(config.bert_hidden_size,self.num_labels)
+
+    def forward(self,input_ids=None,token_type_ids=None,position_ids=None,labels=None):
+        '''
+        :param input_ids: [batch_size,src_len]
+        :param token_type_ids: [batch_size,src_len]
+        :param position_ids: [1,src_len]
+        :param labels: [batch_size,]
+        :return:
+        '''
+        pooled_output,_=self.bert(input_ids=input_ids,token_type_ids=token_type_ids,position_ids=position_ids)
+        pooled_output=self.dropout(pooled_output)
+        logits=self.classifier(pooled_output)#[batch_size,num_classes]
+        if labels is not None:
+            loss_fct=nn.CrossEntropyLoss()
+            loss=loss_fct(logits.view(-1,self.num_labels),labels.view(-1))
+            return loss, logits
+        else:
+            return logits
 
 class GlobalMaxPool1d(nn.Module):
     def __init__(self):

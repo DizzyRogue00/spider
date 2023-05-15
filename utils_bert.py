@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime
 from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 def logger_init(log_file_name='monitor',
                 log_level=logging.DEBUG,
@@ -119,11 +120,19 @@ class LoadDataset:
                 else:
                     contents.append((data,seq_len))
         return contents #[([...],1,12),([...],0,32)]
+    def load_data(self,file_path=None,only_test=False):
+        data=self.data_process(file_path)
+        data=[(torch.tensor(i[0],dtype=torch.long),torch.tensor(int(i[1]),dtype=torch.long)) for i in data]
+        if only_test:
+            data_iter=DataLoader(data,batch_size=self.batch_size)
+        else:
+            data_iter=DataLoader(data,batch_size=self.batch_size,shuffle=self.is_sample_shuffle)
+        return data_iter
 
 class DataIterater(object):
     def __init__(self,original_data,batch_size,device):
         self.batch_size=batch_size
-        self.data=original_data
+        self.batches=original_data
         self.n_batches=len(original_data)//batch_size
         self.residue=False
         if len(original_data)%self.n_batches !=0:

@@ -79,13 +79,14 @@ class config(object):
         self.bert_max_position_embeddings=512
         self.bert_type_vocab_size=2
         self.bert_embedding_dropout=0.1
-        self.bert_num_head=5 #12
+        self.bert_num_head=12 #12
         self.bert_attention_dropout=0.1
         self.bert_hidden_dropout=0.1
         self.bert_intermediate_size=3072
-        self.bert_hidden_act='relu'
+        self.bert_hidden_act='gelu'
         self.bert_num_hidden_layers=12
         self.bert_pooler_type='first_token_transform'
+        self.bert_num_epochs = 100
         #"directionality": "bidi",
         #"pooler_fc_size": 768,
         #"pooler_num_attention_heads": 12,
@@ -388,7 +389,7 @@ class TokenEmbedding(nn.Module):
         :param input_ids: [batch_size,seq_len]
         :return: [batch_size,seq_len,hidden_size]
         '''
-        return self.embedding(input_ids[0])
+        return self.embedding(input_ids)
 
     def _reset_parameters(self,initializer_range):
         for p in self.parameters():
@@ -457,18 +458,18 @@ class BertEmbedding(nn.Module):
 
     def forward(self,input_ids=None,position_ids=None,token_type_ids=None):
         '''
-        :param input_ids: ([batch_size,src_len],[batch_size]
+        :param input_ids: [batch_size,src_len]
         :param position_ids: [0,1,2,...,src_len-1] shape: [1,src_len]
         :param token_type_ids: [0,0,0,0,1,1,1] shape: [batch_size,src_len]
         :return: [batch_size,src_len,hidden_size]
         '''
-        src_len=input_ids[0].size(1)
+        src_len=input_ids.size(1)
         token_embedding=self.word_embeddings(input_ids)
         if position_ids is None:
             position_ids=self.position_ids[:,:src_len]
         positional_embedding=self.position_embeddings(position_ids)
         if token_type_ids is None:
-            token_type_ids=torch.zeros_like(input_ids[0],device=self.device)
+            token_type_ids=torch.zeros_like(input_ids,device=self.device)
         segement_embedding=self.token_type_embeddings(token_type_ids)
         embeddings=token_embedding+positional_embedding+segement_embedding
         embeddings=self.LayerNorm(embeddings)
@@ -492,17 +493,21 @@ class MymultiheadAttention(nn.Module):
         self.dropout=dropout
         assert self.head_dim*num_heads==self.embed_dim
 
-        self.q=nn.Linear(embed_dim,embed_dim,bias)
-        self.k = nn.Linear(embed_dim, embed_dim, bias)
-        self.v = nn.Linear(embed_dim, embed_dim, bias)
-        self.out=nn.Linear(embed_dim,embed_dim,bias)
+        self.q=nn.Linear(embed_dim,embed_dim,bias=bias)
+        self.k = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out=nn.Linear(embed_dim,embed_dim,bias=bias)
 
-    def forward(self,query,key,value):#attn_mask=None,#key_padding_mask=None):
-        return multi_head_attention_forward(query,key,value,self.num_heads,self.dropout,training=True,
+    def forward(self,query,key,value,attn_mask=None,key_padding_mask=None):#attn_mask=None,#key_padding_mask=None):
+        return multi_head_attention_forward(query,key,value,self.num_heads,self.dropout,
+                                            out=self.out,
+                                            training=True,
+                                            key_padding_mask=key_padding_mask,
                                             q_matrix=self.q,
                                             k_matrix=self.k,
                                             v_matrix=self.v,
-                                            out=self.out)
+                                            attn_mask=attn_mask
+                                            )
 
 def multi_head_attention_forward(query,#[batch_size,target_len,embed_dim]
                                  key,#[batch_size,src_len,embed_dim]
@@ -512,39 +517,64 @@ def multi_head_attention_forward(query,#[batch_size,target_len,embed_dim]
                                  out,
                                  training=True,
                                  #key_padding_mask=None, #[batch_size,src_len/target_len]
+                                 key_padding_mask=None,
                                  q_matrix=None,
                                  k_matrix=None,
                                  v_matrix=None,
-                                 #attn_mask=None,#[target_len,src_len] or [num_heads*batch_size,target_len,src_len]
+                                 attn_mask=None#attn_mask=None,#[target_len,src_len] or [num_heads*batch_size,target_len,src_len]
                                  ):
     q=q_matrix(query)
     #[batch_size,target_len,kdim*num_heads]
     k=k_matrix(key)
     v=v_matrix(value)
     batch_size,target_len,embed_dim=query.size()
+    src_len=key.size(1)
     head_dim=embed_dim//num_heads
     scaling=float(head_dim)**-0.5
     q=q*scaling
+    if attn_mask is not None:#[tgt_len,src_len] or [num_heads*batch_size,tgt_len,src_len]
+        if attn_mask.dim()==2:
+            attn_mask=attn_mask.unsqueeze(0)#[1,tgt_len,src_len]
+            if list(attn_mask.size())!=[1,query.size(1),key.size(1)]:
+                raise RuntimeError('The size of the 2D attn_mask is not correct.')
+        elif attn_mask.dim()==3:
+            if list(attn_mask.size())!=[batch_size*num_heads,query.size(1),key.size(1)]:
+                raise RuntimeError('The size of the 3D attn_mask is not correct.')
     q=q.contiguous().view(batch_size*num_heads,-1,head_dim)
     k = k.contiguous().view(batch_size * num_heads, -1, head_dim)
     v = v.contiguous().view(batch_size * num_heads, -1, head_dim)
     attn_output_weights=torch.bmm(q,k.transpose(1,2))#[batch_size*num_heads,target_len,src_len]
+    if attn_mask is not None:
+        attn_output_weights+=attn_mask
+    if key_padding_mask is not None:
+        attn_output_weights=attn_output_weights.view(batch_size,num_heads,target_len,src_len)
+        attn_output_weights=attn_output_weights.masked_fill(
+            key_padding_mask.unsqueeze(1).unsqueeze(2),
+            float('-inf')
+        )
+        attn_output_weights=attn_output_weights.view(batch_size*num_heads,target_len,src_len)
+
     attn_output_weights=F.softmax(attn_output_weights,dim=-1)#[batch_size*num_heads,target_len,src_len]
     attn_output_weights=F.dropout(attn_output_weights,p=dropout,training=training)
     attn_output=torch.bmm(attn_output_weights,v)#[batch_size*num_heads,target_len,vdim]
     attn_output=attn_output.contiguous().view(batch_size,-1,embed_dim)
+    attn_output_weights=attn_output_weights.view(batch_size,num_heads,target_len,src_len)
     Z=out(attn_output)
-    return Z
+    return Z,attn_output_weights.sum(dim=1)/num_heads
 
 class BertSelfAttention(nn.Module):
     def __init__(self,config):
         super(BertSelfAttention,self).__init__()
-        self.multi_head_attention=MymultiheadAttention(embed_dim=config.bert_hidden_size,
+        if 'use_torch_multi_head' in config.__dict__ and config.use_torch_multi_head:
+            MultiHeadAttention=nn.MultiheadAttention
+        else:
+            MultiHeadAttention=MymultiheadAttention
+        self.multi_head_attention=MultiHeadAttention(embed_dim=config.bert_hidden_size,
                                                        num_heads=config.bert_num_head,
                                                        dropout=config.bert_attention_dropout)
 
-    def forward(self,query,key,value):
-        return self.multi_head_attention(query,key,value)
+    def forward(self,query,key,value,attn_mask=None,key_padding_mask=None):
+        return self.multi_head_attention(query,key,value,attn_mask=attn_mask,key_padding_mask=key_padding_mask)
 
 class BertSelfOutput(nn.Module):
     def __init__(self,config):
@@ -568,13 +598,13 @@ class BertAttention(nn.Module):
         self.attention=BertSelfAttention(config)
         self.output=BertSelfOutput(config)
 
-    def forward(self,hidden_states):
+    def forward(self,hidden_states,attn_mask=None):
         '''
         :param hidden_states: [batch_size,src_len,hidden_size]
         :return: [batch_size,src_len,hidden_size]
         '''
-        self.outputs=self.attention(hidden_states,hidden_states,hidden_states)
-        self.outputs=self.output(self.outputs,hidden_states)
+        self.outputs=self.attention(hidden_states,hidden_states,hidden_states,attn_mask=None,key_padding_mask=attn_mask)
+        self.outputs=self.output(self.outputs[0],hidden_states)
         return self.outputs
 
 class BertIntermediateLayer(nn.Module):
@@ -619,12 +649,12 @@ class BertLayer(nn.Module):
         self.bert_intermediate=BertIntermediateLayer(config)
         self.bert_output=BertOutput(config)
 
-    def forward(self,hidden_states):
+    def forward(self,hidden_states,attention_mask=None):
         '''
         :param hidden_states: [batch_size,src_len,embed_dim]
         :return:
         '''
-        hidden_states=self.bert_attention(hidden_states)
+        hidden_states=self.bert_attention(hidden_states,attention_mask)
         intermediate_states=self.bert_intermediate(hidden_states)
         layer_output=self.bert_output(intermediate_states,hidden_states)
         return layer_output
@@ -637,11 +667,11 @@ class BertEncoder(nn.Module):
             [BertLayer(config) for _ in range(config.bert_num_hidden_layers)]
         )
 
-    def forward(self,hidden_states):
+    def forward(self,hidden_states,attention_mask=None):
         all_encoder_layers=[]
         layer_output=hidden_states
         for i,layer_module in enumerate(self.bert_layers):
-            layer_output=layer_module(layer_output)
+            layer_output=layer_module(layer_output,attention_mask)
             all_encoder_layers.append(layer_output)
         return all_encoder_layers
 
@@ -649,7 +679,7 @@ class BertPooler(nn.Module):
     def __init__(self,config):
         super(BertPooler,self).__init__()
         self.dense=nn.Linear(config.bert_hidden_size,config.bert_hidden_size)
-        self.activation=nn.ReLU()
+        self.activation=nn.Tanh()
         self.config=config
 
     def forward(self,hidden_states):
@@ -672,15 +702,21 @@ class BertModel(nn.Module):
         self.bert_encoder=BertEncoder(config)
         self.bert_pooler=BertPooler(config)
         self.config=config
+        self._reset_parameters()
 
-    def forward(self,input_ids=None,token_type_ids=None,position_ids=None):
+    def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,position_ids=None):
         embedding_output=self.bert_embedding(input_ids=input_ids,
                                              position_ids=position_ids,
                                              token_type_ids=token_type_ids)
-        all_encoder_outputs=self.bert_encoder(embedding_output)
+        all_encoder_outputs=self.bert_encoder(embedding_output,attention_mask=attention_mask)
         sequence_output=all_encoder_outputs[-1]
         pooled_output=self.bert_pooler(sequence_output)
         return pooled_output,all_encoder_outputs
+
+    def _reset_parameters(self):
+        for p in self.parameters():
+            if p.dim()>1:
+                normal_(p,mean=0.0,std=self.config.bert_initializer_range)
 
     @classmethod
     def from_pretrained(cls,config,pretrained_model_dir=None):
@@ -725,7 +761,7 @@ class BertForSentenceClassification(nn.Module):
         self.dropout=nn.Dropout(config.bert_hidden_dropout)
         self.classifier=nn.Linear(config.bert_hidden_size,self.num_labels)
 
-    def forward(self,input_ids=None,token_type_ids=None,position_ids=None,labels=None):
+    def forward(self,input_ids=None,attention_mask=None,token_type_ids=None,position_ids=None,labels=None):
         '''
         :param input_ids: [batch_size,src_len]
         :param token_type_ids: [batch_size,src_len]
@@ -733,7 +769,7 @@ class BertForSentenceClassification(nn.Module):
         :param labels: [batch_size,]
         :return:
         '''
-        pooled_output,_=self.bert(input_ids=input_ids,token_type_ids=token_type_ids,position_ids=position_ids)
+        pooled_output,_=self.bert(input_ids=input_ids,attention_mask=attention_mask,token_type_ids=token_type_ids,position_ids=position_ids)
         pooled_output=self.dropout(pooled_output)
         logits=self.classifier(pooled_output)#[batch_size,num_classes]
         if labels is not None:

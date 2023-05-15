@@ -47,3 +47,9 @@ if __name__=='__main__':
         init_network(model)
         print(model.parameters)
         train(config,model,train_iter,dev_iter)#(config,model,train_iter,train_original)
+    else:
+        start_time = time.time()
+        print('Basic bert model...')
+        train(config)
+        time_diff = get_time_diff(start_time)
+        print("Time Usage:", time_diff)

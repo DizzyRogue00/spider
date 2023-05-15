@@ -132,26 +132,29 @@ def evaluate(config,model,data_iter):
 def train(config):
     start_time=time.time()
     model=BertForSentenceClassification(config,config.pretrained_model_dir)
-    if os.path.exists(config.save_path):
-        load_params=torch.load(config.save_path)
-        model.load_state_dict(load_params)
-        logging.info("Successfully load the existed model. Begin to train the model")
+    # if os.path.exists(config.save_path):
+    #     load_params=torch.load(config.save_path)
+    #     model.load_state_dict(load_params)
+    #     logging.info("Successfully load the existed model. Begin to train the model")
     model = model.to(config.device)
-    optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
+    #optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-6)
     model.train()
-    bert_tokrnize=BertTokenizer.from_pretrained(config.pretrained_model_dir).tokenize
+    bert_tokenize=BertTokenizer.from_pretrained(config.pretrained_model_dir).tokenize
     data_loader=utils_bert.LoadDataset(
         vocab_path=config.bert_vocab_path,
-        tokenizer=bert_tokrnize,
+        tokenizer=bert_tokenize,
         batch_size=config.batch_size,
         max_sen_len=config.pad_size,
         split_sep='\t',
         max_position_embeddings=config.bert_max_position_embeddings,
-        pad_index=config.bert_pad_token_id
+        pad_index=config.bert_pad_token_id,
+        is_sample_shuffle=True
         )
-    train_data=data_loader.data_process(config.train_path)#[([...],1,12),([...],0,32)]
-    train_iter=utils_bert.build_iter(train_data,config)
-    dev_iter=copy.deepcopy(train_iter)
+    #train_data=data_loader.data_process(config.train_path)#[([...],1,12),([...],0,32)]
+    #train_iter=utils_bert.build_iter(train_data,config)
+    train_iter=data_loader.load_data(config.train_path)
+    dev_iter=data_loader.load_data(config.train_path,only_test=True)
     time_diff=get_time_diff(start_time)
     print("Time usage:",time_diff)
 
@@ -163,21 +166,24 @@ def train(config):
     max_acc=0
 
     writer=SummaryWriter(log_dir=config.log_path+'/'+time.strftime('%m-%d_%H.%M',time.localtime()))
-    for epoch in range(config.num_epochs):
-        print('Epoch [{}/{}]'.format(epoch + 1, config.num_epochs))
+    for epoch in range(config.bert_num_epochs):
+        print('Epoch [{}/{}]'.format(epoch + 1, config.bert_num_epochs))
         losses=0
         for i, (sample, labels) in enumerate(train_iter):
+            #sample = sample[0].to(config.device)
             sample=sample.to(config.device)
             labels=labels.to(config.device)
+            padding_mask=(sample==data_loader.PAD_IDX)
             loss,logits=model(
                 input_ids=sample,
+                attention_mask=padding_mask,
                 token_type_ids=None,
                 position_ids=None,
                 labels=labels
             ) #logits: [batch_size,num_classes]
             #model.zero_grad()
             optimizer.zero_grad()
-            loss.backward()
+            #loss.backward()
             loss_temp = F.cross_entropy(logits, labels)
             loss_temp.backward()
             optimizer.step()
@@ -186,9 +192,11 @@ def train(config):
             if total_batch % 1 == 0:
                 true = labels.data.cpu()
                 pred = torch.max(logits.data, 1)[1].cpu()
+                print(pred)
+                print(true)
                 train_batch_acc = metrics.accuracy_score(true, pred)
                 train_batch_f1_score = metrics.f1_score(true, pred)
-                train_acc_evaluate,train_acc, train_loss, train_report, train_confusion = evaluate(config, model, dev_iter,label=None)
+                train_acc_evaluate,train_acc, train_loss, train_report, train_confusion = evaluate(config, model, dev_iter,data_loader.PAD_IDX)
                 if train_loss <= train_best_loss:
                     train_best_loss = train_loss
                     torch.save(model.state_dict(), config.save_path)
@@ -204,9 +212,9 @@ def train(config):
                     improve+=''
                 time_dif = get_time_diff(start_time)
                 msg = 'Epoch:{0},Batch:{1}/{2},Iter: {3:>6},Train Batch Loss Evaluate:{4:>5.3},Train Batch Loss: {5:>5.3},Train Batch Acc Evaluate:{6:>6.2%},Train Batch Acc: {7:>6.2%}, Train Batch F1 Score:{8:>5.3},Val Loss Evaluate:{9:5.2},Val Loss: {10:>5.2},Val Acc Evaluate:{11:>6.2%},  Val Acc: {12:>6.2%},Val Report:{13},Val Confusion Matrix:{14}  Time: {15} {16}'
-                print(msg.format(epoch,i,len(train_iter),total_batch,loss.item(),loss_temp.item(),train_batch_acc_evaluate.item(),train_batch_acc, train_batch_f1_score, losses,train_loss, train_acc_evaluate,train_acc,
+                print(msg.format(epoch+1,i+1,len(train_iter),total_batch,loss.item(),loss_temp.item(),train_batch_acc_evaluate.item(),train_batch_acc, train_batch_f1_score, losses,train_loss, train_acc_evaluate,train_acc,
                                  train_report, train_confusion, time_dif, improve))
-                logging.info(msg.format(epoch, i, len(train_iter), total_batch, loss.item(), loss_temp.item(),
+                logging.info(msg.format(epoch+1, i+1, len(train_iter), total_batch, loss.item(), loss_temp.item(),
                                  train_batch_acc_evaluate.item(), train_batch_acc, train_batch_f1_score, losses,
                                  train_loss, train_acc_evaluate, train_acc,
                                  train_report, train_confusion, time_dif, improve))
@@ -226,7 +234,7 @@ def train(config):
     writer.close()
 
 @overload
-def evaluate(config,model,data_iter,label=None):
+def evaluate(config,model,data_iter,PAD_IDX):
     model.eval()
     loss_total=0
     predict_all=np.array([],dtype=int)
@@ -235,9 +243,11 @@ def evaluate(config,model,data_iter,label=None):
         acc_sum=0.0
         num_data=0
         for data,labels in data_iter:
-            data=data.to(config.device)
-            labels=data.to(config.device)
-            output=model(data,labels=label)
+            #data=data[0].to(config.device)
+            data = data.to(config.device)
+            labels=labels.to(config.device)
+            padding_mask=(data==PAD_IDX)
+            output=model(data,attention_mask=padding_mask)
             acc_sum+=(output.argmax(1)==labels).float().sum().item()
             num_data+=len(labels)
             loss=F.cross_entropy(output,labels)
@@ -247,6 +257,8 @@ def evaluate(config,model,data_iter,label=None):
             labels_all = np.append(labels_all, labels)
             predict_all = np.append(predict_all, pred)
     acc = metrics.accuracy_score(labels_all, predict_all)
+    print(predict_all)
+    print(labels_all)
     report = metrics.classification_report(labels_all, predict_all, target_names=config.class_list, digits=4)
     confusion = metrics.confusion_matrix(labels_all, predict_all)
     acc_evaluate=acc_sum/num_data

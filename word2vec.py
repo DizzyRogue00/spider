@@ -2,6 +2,7 @@ import os
 import sys
 import torch
 import numpy as np
+import pandas as pd
 import pickle as pkl
 from tqdm import tqdm
 import time
@@ -50,38 +51,89 @@ def build_dataset(config,use_word,path):
             #pkl.dump(vocab_dict,open(config.vocab_path,'wb'))
     print(f"Vocabuary size: {len(vocab_dict)}")
 
+    def sequence_len(content,pad_size):
+        token=tokenizer(content)
+        seq_length=len(token)
+        if seq_length < pad_size:
+            token.extend([PAD] * (pad_size - seq_length))
+        else:
+            token = token[:pad_size]
+            seq_length = pad_size
+        words = [vocab_dict.get(word, vocab_dict.get(UNK)) for word in token]
+        return seq_length,words
     def load_dataset(pad_size=32):
-        contents=[]
-        with open(path, 'r', encoding="UTF-8") as f:
-            num_line = sum(1 for line in f)
-        with open(path,'r',encoding="UTF-8") as f:
-            for line in tqdm(f,total=num_line):
-                lin=line.strip()
-                if not lin:
-                    continue
-                if len(lin.split('\t'))==2:
-                    content,label=lin.split('\t')
-                else:
-                    content=lin.split('\t')
-                token=tokenizer(content)
-                seq_len=len(token)
-                if seq_len<pad_size:
-                    token.extend([PAD]*(pad_size-seq_len))
-                else:
-                    token=token[:pad_size]
-                    seq_len=pad_size
-                #word to id
-                words=[vocab_dict.get(word,vocab_dict.get(UNK)) for word in token]
-                try:
-                    label
-                except NameError:
-                    label_exists=False
-                else:
-                    label_exists=True
-                if label_exists:
-                    contents.append((words,int(label),seq_len))
-                else:
-                    contents.append((words,seq_len))
+        #contents=[]
+        postfix=os.path.splitext(path)[1]
+        if postfix=='.xlsx':
+            data=pd.read_excel(path,header=1)
+            data_column=data.columns.values.tolist()
+            if data_column[-1]!='text':
+                data=data.rename(columns={data_column[-1]:'label'})
+                #label=list(data['label'])
+                #data['label'].astype('int64')
+                data['content']=data['text'].map(lambda x:x.replace(' ','').replace('_x000D_','，').replace('\n',''))
+                data['seq_len']=data['content'].map(lambda x:sequence_len(x,pad_size)[0])
+                data['word_id']=data['content'].map(lambda x:sequence_len(x,pad_size)[1])
+                data['result']=data.apply(lambda x:(x['word_id'],x['label'],x['seq_len']),axis=1)
+                contents=list(data['result'])
+            else:
+                data['content'] = data['text'].map(
+                    lambda x: x.replace(' ', '').replace('_x000D_', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: sequence_len(x, pad_size)[0])
+                data['word_id'] = data['content'].map(lambda x: sequence_len(x, pad_size)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'],x['seq_len']), axis=1)
+                contents = list(data['result'])
+        elif postfix=='.csv':
+            data=pd.read_csv(path)
+            data_column = data.columns.values.tolist()
+            if data_column[-1]!='text':
+                data.rename(column={data_column[-1]:'label'})
+                #label=list(data['label'])
+                data['label'].astype('int64')
+                data['content']=data['text'].map(lambda x:x.replace(' ','').replace('\r','，').replace('\n',''))
+                data['seq_len']=data['content'].map(lambda x:sequence_len(x,pad_size)[0])
+                data['word_id']=data['content'].map(lambda x:sequence_len(x,pad_size)[1])
+                data['result']=data.apply(lambda x:(x['word_id'],x['label'],x['seq_len']),axis=1)
+                contents=list(data['result'])
+            else:
+                data['content'] = data['text'].map(
+                    lambda x: x.replace(' ', '').replace('\r', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: sequence_len(x, pad_size)[0])
+                data['word_id'] = data['content'].map(lambda x: sequence_len(x, pad_size)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'],x['seq_len']), axis=1)
+                contents = list(data['result'])
+        else:#txt
+            contents=[]
+            with open(path, 'r', encoding="UTF-8") as f:
+                num_line = sum(1 for line in f)
+            with open(path, 'r', encoding="UTF-8") as f:
+                for line in tqdm(f, total=num_line):
+                    lin = line.strip()
+                    if not lin:
+                        continue
+                    if len(lin.split('\t')) == 2:
+                        content, label = lin.split('\t')
+                    else:
+                        content = lin.split('\t')
+                    token = tokenizer(content)
+                    seq_len = len(token)
+                    if seq_len < pad_size:
+                        token.extend([PAD] * (pad_size - seq_len))
+                    else:
+                        token = token[:pad_size]
+                        seq_len = pad_size
+                    # word to id
+                    words = [vocab_dict.get(word, vocab_dict.get(UNK)) for word in token]
+                    try:
+                        label
+                    except NameError:
+                        label_exists = False
+                    else:
+                        label_exists = True
+                    if label_exists:
+                        contents.append((words, int(label), seq_len))
+                    else:
+                        contents.append((words, seq_len))
         return contents #[([...],0,32),([...],1,32)]
 
     #train=load_dataset(config.train_path,config.pad_size)

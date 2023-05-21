@@ -2,6 +2,7 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pandas as pd
 import numpy as np
 import copy
 import logging
@@ -87,38 +88,92 @@ class LoadDataset:
         self.max_sen_len=max_sen_len
         self.is_sample_shuffle=is_sample_shuffle
 
-    def data_process(self,filepath):
-        contents=[]
-        with open(filepath,'r',encoding='utf-8') as f:
-            raw_data=f.readlines()
-        with open(filepath,'r',encoding='utf-8') as f:
-            for line in tqdm(raw_data,ncols=80):
-                lin=line.strip().split(self.split_sep)
-                if len(lin)==2:
-                    content,label=lin
-                else:
-                    content=lin[0]
-                data=[self.CLS_IDX]+[self.vocab[token] for token in self.tokenizer(content)]
-                seq_len=len(data)
-                if seq_len>=self.max_sen_len-1:
-                    data=data[:self.max_sen_len-1]
-                    data += [self.SEP_IDX]
-                    seq_len=self.max_sen_len
-                else:
-                    data += [self.SEP_IDX]
-                    seq_len+=1
-                    data.extend([0]*(self.max_sen_len-seq_len))
+    def sentence_process(self,content):
+        data = [self.CLS_IDX] + [self.vocab[token] for token in self.tokenizer(content)]
+        seq_len = len(data)
+        if seq_len >= self.max_sen_len - 1:
+            data = data[:self.max_sen_len - 1]
+            data += [self.SEP_IDX]
+            seq_len = self.max_sen_len
+        else:
+            data += [self.SEP_IDX]
+            seq_len += 1
+            data.extend([0] * (self.max_sen_len - seq_len))
+        return seq_len,data
 
-                try:
-                    label
-                except NameError:
-                    label_exists=False
-                else:
-                    label_exists=True
-                if label_exists:
-                    contents.append((data,int(label),seq_len))
-                else:
-                    contents.append((data,seq_len))
+    def data_process(self,filepath):
+        postfix = os.path.splitext(filepath)[1]
+        if postfix == '.xlsx':
+            data = pd.read_excel(filepath, header=1)
+            data_column = data.columns.values.tolist()
+            if data_column[-1] != 'text':
+                data = data.rename(columns={data_column[-1]: 'label'})
+                # label=list(data['label'])
+                # data['label'].astype('int64')
+                data['content'] = data['text'].map(
+                    lambda x: x.replace(' ', '').replace('_x000D_', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: self.sentence_process(x)[0])
+                data['word_id'] = data['content'].map(lambda x: self.sentence_process(x)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'], x['label'], x['seq_len']), axis=1)
+                contents = list(data['result'])
+            else:
+                data['content'] = data['text'].map(
+                    lambda x: x.replace(' ', '').replace('_x000D_', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: self.sentence_process(x)[0])
+                data['word_id'] = data['content'].map(lambda x: self.sentence_process(x)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'], x['seq_len']), axis=1)
+                contents = list(data['result'])
+        elif postfix == '.csv':
+            data = pd.read_csv(filepath)
+            data_column = data.columns.values.tolist()
+            if data_column[-1] != 'text':
+                data.rename(column={data_column[-1]: 'label'})
+                # label=list(data['label'])
+                data['label'].astype('int64')
+                data['content'] = data['text'].map(lambda x: x.replace(' ', '').replace('\r', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: self.sentence_process(x)[0])
+                data['word_id'] = data['content'].map(lambda x: self.sentence_process(x)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'], x['label'], x['seq_len']), axis=1)
+                contents = list(data['result'])
+            else:
+                data['content'] = data['text'].map(
+                    lambda x: x.replace(' ', '').replace('\r', '，').replace('\n', ''))
+                data['seq_len'] = data['content'].map(lambda x: self.sentence_process(x)[0])
+                data['word_id'] = data['content'].map(lambda x: self.sentence_process(x)[1])
+                data['result'] = data.apply(lambda x: (x['word_id'], x['seq_len']), axis=1)
+                contents = list(data['result'])
+        else:#'txt'
+            contents=[]
+            with open(filepath,'r',encoding='utf-8') as f:
+                raw_data=f.readlines()
+            with open(filepath,'r',encoding='utf-8') as f:
+                for line in tqdm(raw_data,ncols=80):
+                    lin=line.strip().split(self.split_sep)
+                    if len(lin)==2:
+                        content,label=lin
+                    else:
+                        content=lin[0]
+                    data=[self.CLS_IDX]+[self.vocab[token] for token in self.tokenizer(content)]
+                    seq_len=len(data)
+                    if seq_len>=self.max_sen_len-1:
+                        data=data[:self.max_sen_len-1]
+                        data += [self.SEP_IDX]
+                        seq_len=self.max_sen_len
+                    else:
+                        data += [self.SEP_IDX]
+                        seq_len+=1
+                        data.extend([0]*(self.max_sen_len-seq_len))
+
+                    try:
+                        label
+                    except NameError:
+                        label_exists=False
+                    else:
+                        label_exists=True
+                    if label_exists:
+                        contents.append((data,int(label),seq_len))
+                    else:
+                        contents.append((data,seq_len))
         return contents #[([...],1,12),([...],0,32)]
     def load_data(self,file_path=None,only_test=False):
         data=self.data_process(file_path)

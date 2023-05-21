@@ -38,6 +38,10 @@ def init_network(model,method='xavier',exclude='embedding',seed=1223):
 def train(config,model,train_iter,train_original):#(config,model,train_iter,dev_iter,test_iter)
     start_time=time.time()
     model.train()
+    if os.path.exists(config.save_path):
+        load_params=torch.load(config.save_path)
+        model.load_state_dict(load_params)
+        logging.info("Successfully load the existed model. Begin to train the model")
     optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
     total_batch=0
     #dev_best_loss=float('inf')
@@ -132,10 +136,10 @@ def evaluate(config,model,data_iter):
 def train(config):
     start_time=time.time()
     model=BertForSentenceClassification(config,config.pretrained_model_dir)
-    # if os.path.exists(config.save_path):
-    #     load_params=torch.load(config.save_path)
-    #     model.load_state_dict(load_params)
-    #     logging.info("Successfully load the existed model. Begin to train the model")
+    if os.path.exists(config.save_path):
+        load_params=torch.load(config.save_path)
+        model.load_state_dict(load_params)
+        logging.info("Successfully load the existed model. Begin to train the model")
     model = model.to(config.device)
     #optimizer=torch.optim.Adam(model.parameters(),lr=config.learning_rate)
     optimizer = torch.optim.Adam(model.parameters(), lr=5e-6)

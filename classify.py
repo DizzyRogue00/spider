@@ -13,8 +13,9 @@ from utils_bert import logger_init
 
 class config(object):
     #
-    def __init__(self,model_name,embedding='random',train_path=None,dev_path=None,test_path=None):
+    def __init__(self,model_name,mode,embedding='random',train_path=None,dev_path=None,test_path=None):
         self.model_name = model_name
+        self.mode=mode
         #self.train_path = dataset + '/data/train.txt'                                # training set
         #self.dev_path = dataset + '/data/dev.txt'                                    # validation set
         #self.test_path = dataset + '/data/test.txt'                                  # test set
@@ -39,8 +40,8 @@ class config(object):
 
         self.class_list=['0','1']   #class list
         self.vocab_path='data/vocab.pkl' #word dictionary {word: word id} .pkl import pickle;open();load()
-        self.save_path ='data/' + self.model_name + '.ckpt'        # result of tranined model
-        self.log_path = 'data/log/' + self.model_name
+        self.save_path ='data/' + self.model_name+'_'+self.mode + '.ckpt'        # result of tranined model
+        self.log_path = 'data/log/' + self.model_name+'_'+self.mode
         self.embedding_pretrained = torch.tensor(np.load('data/' + embedding)["embeddings"].astype('float32')) if embedding != 'random' else None # 预训练词向量
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   # 设备
 
@@ -63,6 +64,7 @@ class config(object):
         self.num_layers=2 #lstm 层数
         #LSTM+attention
         self.hidden_size2=64
+        #self.rnn_dropout=0.7
 
         #transformer
         self.dim_model=300
@@ -153,6 +155,7 @@ class TextRNN(nn.Module):
     def forward(self,x):
         out=self.embedding(x[0]) #[batch_size,seq_len,embedding]
         out,_=self.lstm(out)
+        #out=F.relu(out)
         out=self.classify(out[:,-1,:])
         return out
 
@@ -231,7 +234,7 @@ class DPCNN(nn.Module):
         x=self.padding1(x)
         x=self.relu(x)
         x=self.conv(x)#[batch_size,out_channel,seq_len-3+1,1]
-        while x.size()[2]>2:
+        while x.size()[2]>=2:
             x=self._block(x)
         x=x.squeeze()#[batch_size,num_filters]
         out=self.classify(x)
